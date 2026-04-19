@@ -1,169 +1,999 @@
 <!DOCTYPE html>
-
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CodeForge AI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeForge AI Ultra - أقوى مولد أكواد مجاني بالعالم</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #0a0c15;
+            --bg2: #0f1119;
+            --surface: #151821;
+            --surface2: #1a1e2a;
+            --surface3: #1f2433;
+            --border: #252a3a;
+            --border2: #2d3348;
+            --accent: #6366f1;
+            --accent2: #8b5cf6;
+            --accent3: #06b6d4;
+            --green: #10b981;
+            --red: #ef4444;
+            --yellow: #f59e0b;
+            --text: #e5e7eb;
+            --text2: #9ca3af;
+            --text3: #6b7280;
+            --radius: 16px;
+            --radius-sm: 10px;
+            --glow: 0 0 20px rgba(99,102,241,0.3);
+        }
+
+        [data-theme="light"] {
+            --bg: #f3f4f6;
+            --bg2: #e5e7eb;
+            --surface: #ffffff;
+            --surface2: #f9fafb;
+            --surface3: #f3f4f6;
+            --border: #e5e7eb;
+            --border2: #d1d5db;
+            --text: #1f2937;
+            --text2: #4b5563;
+            --text3: #9ca3af;
+        }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* Header */
+        .header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), var(--accent2), var(--accent3));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .logo small {
+            font-size: 12px;
+            background: none;
+            -webkit-text-fill-color: var(--text2);
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+        }
+
+        button, .btn {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-family: 'Cairo', sans-serif;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: var(--surface3);
+            border-color: var(--accent);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border: none;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: flex;
+            height: calc(100vh - 65px);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: width 0.3s;
+        }
+
+        .sidebar.collapsed {
+            width: 0;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .new-chat {
+            width: 100%;
+            margin-bottom: 16px;
+        }
+
+        .history-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .history-item {
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            margin-bottom: 4px;
+            transition: all 0.2s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-item:hover {
+            background: var(--surface2);
+        }
+
+        .history-item.active {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: white;
+        }
+
+        /* Chat Area */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .avatar.ai {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+        }
+
+        .avatar.user {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+        }
+
+        .content {
+            max-width: 70%;
+            background: var(--surface2);
+            border-radius: 16px;
+            padding: 12px 18px;
+            line-height: 1.6;
+        }
+
+        .message.user .content {
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: white;
+        }
+
+        /* Code Block */
+        .code-block {
+            margin: 12px 0;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .code-header {
+            background: var(--surface3);
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .code-lang {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .code-filename {
+            font-size: 12px;
+            font-family: monospace;
+            color: var(--text2);
+        }
+
+        .code-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .code-actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+
+        pre {
+            margin: 0;
+            padding: 16px;
+            overflow-x: auto;
+            background: #0d1117;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        /* Input Area */
+        .input-area {
+            padding: 16px 24px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        textarea {
+            flex: 1;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 12px 16px;
+            color: var(--text);
+            font-family: 'Cairo', sans-serif;
+            font-size: 14px;
+            resize: none;
+            max-height: 150px;
+            direction: rtl;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .options {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        select {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-family: 'Cairo', sans-serif;
+        }
+
+        .typing {
+            display: flex;
+            gap: 4px;
+            padding: 8px 0;
+        }
+
+        .typing span {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite;
+        }
+
+        .typing span:nth-child(2) { animation-delay: 0.2s; }
+        .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--surface);
+            border-radius: 24px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .file-list {
+            margin: 16px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Welcome Screen */
+        .welcome {
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .welcome-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .suggestions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 12px;
+            margin-top: 30px;
+        }
+
+        .suggestion {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .suggestion:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--surface2);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border2);
+            border-radius: 3px;
+        }
+    </style>
 </head>
-<body class="dark">
-
-<canvas id="bgCanvas"></canvas>
-
-  <!-- API KEY SCREEN -->
-
-  <div class="apikey-screen" id="apikeyScreen">
-    <div class="apikey-card">
-      <div class="apikey-logo">⬡</div>
-      <h1>CodeForge <em>AI</em></h1>
-      <p>أدخل مفتاح Anthropic API الخاص بك للبدء</p>
-      <div class="apikey-input-wrap">
-        <input type="password" id="apikeyInput" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false" />
-        <button class="apikey-toggle" id="apikeyToggle" type="button">👁</button>
-      </div>
-      <label class="apikey-remember">
-        <input type="checkbox" id="apikeyRemember" checked />
-        <span>احفظ المفتاح في المتصفح</span>
-      </label>
-      <button class="apikey-btn" id="apikeyBtn">ابدأ ←</button>
-      <a class="apikey-link" href="https://console.anthropic.com/keys" target="_blank">احصل على مفتاح API مجاني →</a>
-      <div class="apikey-note">🔒 المفتاح يُحفظ في متصفحك فقط</div>
-    </div>
-  </div>
-
-  <!-- MAIN APP -->
-
-  <div class="app" id="appShell" style="display:none">
-
-```
-<aside class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <div class="brand">
-      <span class="brand-icon">⬡</span>
-      <span class="brand-name">CodeForge <em>AI</em></span>
-    </div>
-    <button class="icon-btn" id="toggleSidebar">‹</button>
-  </div>
-  <button class="new-chat-btn" id="newChatBtn"><span>+</span> محادثة جديدة</button>
-  <div class="sidebar-section-label">المحادثات</div>
-  <ul class="history-list" id="historyList"></ul>
-  <div class="sidebar-footer">
-    <label class="theme-toggle">
-      <input type="checkbox" id="themeToggle" />
-      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-      <span>الوضع الفاتح</span>
-    </label>
-    <button class="change-key-btn" id="changeKeyBtn">🔑 تغيير API Key</button>
-    <div class="version-tag">v2.1 · claude-sonnet-4-6</div>
-  </div>
-</aside>
-
-<main class="main">
-  <header class="topbar">
-    <button class="icon-btn" id="openSidebar">☰</button>
-    <div class="topbar-title" id="topbarTitle">مساعد الكودنك الذكي</div>
-    <button class="icon-btn" id="clearChatBtn">🗑</button>
-  </header>
-
-  <div class="chat-container" id="chatContainer">
-    <div class="welcome-screen" id="welcomeScreen">
-      <div class="welcome-logo">⬡</div>
-      <h2>CodeForge AI</h2>
-      <p>مولّد الأكواد المتكاملة · اطلب أي مشروع وسيُنشأ كاملاً</p>
-      <div class="suggestions-grid">
-        <button class="suggest-card" data-text="ابني لي موقع متجر إلكتروني كامل بـ HTML CSS JS مع سلة التسوق وصفحة المنتجات">
-          <span class="sug-icon">🛒</span><strong>متجر إلكتروني</strong><span>HTML + CSS + JS</span>
-        </button>
-        <button class="suggest-card" data-text="اكتب REST API كامل بـ Node.js و Express مع MongoDB لإدارة المستخدمين و JWT">
-          <span class="sug-icon">⚙️</span><strong>REST API</strong><span>Node.js + Express</span>
-        </button>
-        <button class="suggest-card" data-text="ابني داشبورد إدارة كامل بـ React مع Recharts وجداول بيانات وتصميم احترافي">
-          <span class="sug-icon">📊</span><strong>Dashboard React</strong><span>Charts + Tables</span>
-        </button>
-        <button class="suggest-card" data-text="اكتب تطبيق Flutter كامل لإدارة المهام مع قاعدة بيانات SQLite محلية">
-          <span class="sug-icon">📱</span><strong>Flutter App</strong><span>Todo + SQLite</span>
-        </button>
-        <button class="suggest-card" data-text="ابني موقع شركة احترافي بـ HTML CSS مع Animations وتصميم حديث Responsive">
-          <span class="sug-icon">🏢</span><strong>موقع شركة</strong><span>HTML + CSS</span>
-        </button>
-        <button class="suggest-card" data-text="اكتب Python script كامل لتحليل بيانات CSV مع Pandas وعرض إحصائيات Matplotlib">
-          <span class="sug-icon">🐍</span><strong>Python Analysis</strong><span>Pandas + Charts</span>
-        </button>
-      </div>
-    </div>
-    <div class="messages-list" id="messagesList"></div>
-  </div>
-
-  <div class="input-bar-wrap">
-    <div class="input-bar">
-      <div class="input-options">
-        <select id="langSelect" class="lang-select">
-          <option value="auto">🔮 تلقائي</option>
-          <option value="html">HTML/CSS/JS</option>
-          <option value="react">React</option>
-          <option value="vue">Vue.js</option>
-          <option value="python">Python</option>
-          <option value="node">Node.js</option>
-          <option value="flutter">Flutter</option>
-          <option value="php">PHP</option>
-          <option value="java">Java</option>
-          <option value="cpp">C++</option>
-        </select>
-        <select id="sizeSelect" class="lang-select">
-          <option value="small">مختصر</option>
-          <option value="medium" selected>متوسط</option>
-          <option value="large">كامل ومفصّل</option>
-        </select>
-      </div>
-      <div class="input-row">
-        <textarea id="userInput" placeholder="اطلب أي مشروع أو كود…" rows="1"></textarea>
-        <button class="send-btn" id="sendBtn"><span id="sendIcon">➤</span></button>
-      </div>
-    </div>
-    <div class="input-hint">CodeForge AI · claude-sonnet-4-6</div>
-  </div>
-</main>
-```
-
-  </div>
-
-  <!-- Code Block Template -->
-
-  <template id="codeBlockTpl">
-    <div class="code-block">
-      <div class="code-header">
-        <span class="code-lang-badge"></span>
-        <span class="code-filename"></span>
-        <div class="code-actions">
-          <button class="code-btn copy-btn">📋 نسخ</button>
-          <button class="code-btn dl-btn">⬇ تحميل</button>
+<body>
+    <div class="header">
+        <div class="logo">
+            ⬡ CodeForge AI <small>Ultra</small>
         </div>
-      </div>
-      <pre><code></code></pre>
+        <div class="controls">
+            <button onclick="toggleTheme()">🌓</button>
+            <button onclick="toggleSidebar()">📋</button>
+        </div>
     </div>
-  </template>
 
-  <!-- ZIP Modal -->
+    <div class="main-container">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat btn-primary" onclick="newChat()">+ محادثة جديدة</button>
+            </div>
+            <div class="history-list" id="historyList"></div>
+        </div>
 
-  <div class="modal-overlay" id="zipModal">
-    <div class="modal">
-      <div class="modal-icon">📦</div>
-      <h3>تحميل المشروع كاملاً</h3>
-      <p id="zipModalDesc"></p>
-      <div class="modal-files" id="zipFilesList"></div>
-      <div class="modal-actions">
-        <button class="btn-primary" id="zipDownloadBtn">⬇ تحميل ZIP</button>
-        <button class="btn-secondary" id="zipCancelBtn">إلغاء</button>
-      </div>
+        <div class="chat-area">
+            <div class="chat-messages" id="chatMessages">
+                <div class="welcome">
+                    <div class="welcome-icon">🚀</div>
+                    <h2>CodeForge AI Ultra</h2>
+                    <p>أقوى مولد أكواد بالعالم | مجاني بالكامل</p>
+                    <p style="color: var(--text2); margin-top: 10px;">
+                        🏆 Gemini 2.5 Pro | ⚡ Groq LLaMA 3.3 | 🤗 CodeLlama
+                    </p>
+                    <div class="suggestions">
+                        <div class="suggestion" onclick="sendQuick('ابني لي موقع متجر إلكتروني كامل مع سلة تسوق')">
+                            🛒 متجر إلكتروني
+                        </div>
+                        <div class="suggestion" onclick="sendQuick('اكتب لي REST API كامل بـ Node.js و Express')">
+                            ⚙️ REST API
+                        </div>
+                        <div class="suggestion" onclick="sendQuick('ابني تطبيق React Dashboard مع Charts')">
+                            📊 React Dashboard
+                        </div>
+                        <div class="suggestion" onclick="sendQuick('اكتب لعبة بسيطة بـ HTML CSS JS')">
+                            🎮 لعبة تفاعلية
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area">
+                <div class="options">
+                    <select id="modelSelect">
+                        <option value="gemini">🏆 Gemini 2.5 Pro (الأقوى)</option>
+                        <option value="groq">⚡ Groq LLaMA 3.3 (الأسرع)</option>
+                        <option value="huggingface">🤗 CodeLlama (احتياطي)</option>
+                    </select>
+                    <select id="sizeSelect">
+                        <option value="small">📄 مختصر</option>
+                        <option value="medium" selected>📚 متوسط</option>
+                        <option value="large">📖 كامل ومفصل</option>
+                    </select>
+                </div>
+                <div class="input-wrapper">
+                    <textarea id="messageInput" rows="1" placeholder="اكتب طلبك هنا... (مثال: ابني موقع شخصي احترافي)"></textarea>
+                    <button class="send-btn" onclick="sendMessage()">➤</button>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <div class="modal" id="zipModal">
+        <div class="modal-content">
+            <h3>📦 تحميل المشروع</h3>
+            <div class="file-list" id="fileList"></div>
+            <button onclick="downloadZip()" class="btn-primary" style="width: 100%;">تحميل ZIP</button>
+            <button onclick="closeModal()" style="margin-top: 10px; width: 100%;">إلغاء</button>
+        </div>
+    </div>
 
-  <script src="script.js"></script>
+    <script>
+        // ============================================================
+        // المفاتيح الخاصة بك
+        // ============================================================
+        const API_KEYS = {
+            gemini: 'AIzaSyAvyKL7np57Hk_B7NfnWBJZMBYPjatrnKQ',
+            groq: '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',
+            huggingface: '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'
+        };
 
+        // ============================================================
+        // حالة التطبيق
+        // ============================================================
+        let conversations = [];
+        let activeId = Date.now().toString();
+        let isGenerating = false;
+        let currentFiles = [];
+
+        // ============================================================
+        // دوال Gemini API
+        // ============================================================
+        async function callGemini(prompt, systemPrompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${API_KEYS.gemini}`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [{ text: systemPrompt + '\n\n' + prompt }]
+                    }],
+                    generationConfig: {
+                        temperature: 0.7,
+                        maxOutputTokens: 8192,
+                        topP: 0.95
+                    }
+                })
+            });
+            
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.candidates[0].content.parts[0].text;
+        }
+
+        // ============================================================
+        // دوال Groq API (الأسرع)
+        // ============================================================
+        async function callGroq(prompt, systemPrompt) {
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${API_KEYS.groq}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'llama-3.3-70b-versatile',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 8192
+                })
+            });
+            
+            const data = await response.json();
+            if (data.error) throw new Error(data.error.message);
+            return data.choices[0].message.content;
+        }
+
+        // ============================================================
+        // دوال Hugging Face API
+        // ============================================================
+        async function callHuggingFace(prompt, systemPrompt) {
+            const response = await fetch('https://api-inference.huggingface.co/models/codellama/CodeLlama-70b-Instruct-hf', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${API_KEYS.huggingface}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    inputs: `<s>[INST] <<SYS>>\n${systemPrompt}\n<</SYS>>\n\n${prompt} [/INST]`,
+                    parameters: {
+                        max_new_tokens: 4096,
+                        temperature: 0.7,
+                        return_full_text: false
+                    }
+                })
+            });
+            
+            const data = await response.json();
+            if (data.error) throw new Error(data.error);
+            return typeof data === 'string' ? data : data[0]?.generated_text || JSON.stringify(data);
+        }
+
+        // ============================================================
+        // النظام الذكي - يختار أفضل API حسب اختيار المستخدم
+        // ============================================================
+        async function callAI(prompt, systemPrompt) {
+            const model = document.getElementById('modelSelect').value;
+            
+            switch(model) {
+                case 'gemini':
+                    return await callGemini(prompt, systemPrompt);
+                case 'groq':
+                    return await callGroq(prompt, systemPrompt);
+                case 'huggingface':
+                    return await callHuggingFace(prompt, systemPrompt);
+                default:
+                    return await callGemini(prompt, systemPrompt);
+            }
+        }
+
+        // ============================================================
+        // بناء الـ System Prompt الاحترافي
+        // ============================================================
+        function buildSystemPrompt() {
+            const size = document.getElementById('sizeSelect').value;
+            const sizeMap = {
+                small: '300-500 سطر، مختصر ومباشر مع الوظائف الأساسية',
+                medium: '500-1000 سطر، متوسط ومفصل مع جميع الميزات',
+                large: '1000+ سطر، كامل جداً بدون أي اختصار مع توثيق شامل'
+            };
+            
+            return `أنت CodeForge AI Ultra، مهندس برمجيات خبير.
+
+## قواعد الإخراج (اتبعها بدقة):
+
+1. ولّد كوداً كاملاً - لا تختصر أبداً، لا "// TODO" ولا "..."
+2. حجم الكود: ${sizeMap[size]}
+3. لكل ملف استخدم الصيغة: \`\`\`لغة:اسم الملف\nالكود\n\`\`\`
+
+مثال:
+\`\`\`html:index.html
+<!DOCTYPE html>
+<html>
+...
+</html>
+\`\`\`
+
+## معايير الجودة:
+- كود نظيف وجاهز للتشغيل
+- تعليقات واضحة
+- Best Practices
+- Responsive Design
+- معالجة الأخطاء
+
+في النهاية اكتب: "📁 الملفات المولدة: (قائمة بأسماء الملفات)"`;
+        }
+
+        // ============================================================
+        // استخراج الملفات من الرد
+        // ============================================================
+        function parseFiles(text) {
+            const files = [];
+            const regex = /```(\w+):([^\n]+)\n([\s\S]*?)```/g;
+            let match;
+            
+            while ((match = regex.exec(text)) !== null) {
+                files.push({
+                    language: match[1],
+                    filename: match[2].trim(),
+                    code: match[3].trim()
+                });
+            }
+            
+            return files;
+        }
+
+        // ============================================================
+        // عرض الرسائل
+        // ============================================================
+        function addMessage(role, content) {
+            const container = document.getElementById('chatMessages');
+            const welcome = container.querySelector('.welcome');
+            if (welcome && role === 'user') welcome.remove();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const avatar = document.createElement('div');
+            avatar.className = `avatar ${role}`;
+            avatar.textContent = role === 'ai' ? '🤖' : '👤';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'content';
+            
+            if (role === 'ai') {
+                const files = parseFiles(content);
+                if (files.length > 0) {
+                    currentFiles = files;
+                    const header = document.createElement('div');
+                    header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;';
+                    header.innerHTML = `<span>📁 ${files.length} ملف</span>
+                                       <button onclick="showZipModal()" style="background: var(--accent); padding: 4px 12px;">📦 ZIP</button>`;
+                    contentDiv.appendChild(header);
+                    
+                    files.forEach(file => {
+                        const codeBlock = document.createElement('div');
+                        codeBlock.className = 'code-block';
+                        codeBlock.innerHTML = `
+                            <div class="code-header">
+                                <span class="code-lang">${file.language}</span>
+                                <span class="code-filename">${escapeHtml(file.filename)}</span>
+                                <div class="code-actions">
+                                    <button onclick="copyCode('${escapeHtml(file.code)}', this)">📋 نسخ</button>
+                                    <button onclick="downloadFile('${escapeHtml(file.filename)}', \`${escapeHtml(file.code)}\`)">⬇ تحميل</button>
+                                </div>
+                            </div>
+                            <pre><code>${escapeHtml(file.code)}</code></pre>
+                        `;
+                        contentDiv.appendChild(codeBlock);
+                    });
+                } else {
+                    contentDiv.innerHTML = formatText(content);
+                }
+            } else {
+                contentDiv.textContent = content;
+            }
+            
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(contentDiv);
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+            
+            return messageDiv;
+        }
+
+        function formatText(text) {
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br>');
+        }
+
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function showTyping() {
+            const container = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message ai';
+            typingDiv.id = 'typing';
+            typingDiv.innerHTML = `
+                <div class="avatar ai">🤖</div>
+                <div class="content">
+                    <div class="typing">
+                        <span></span><span></span><span></span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(typingDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function hideTyping() {
+            const typing = document.getElementById('typing');
+            if (typing) typing.remove();
+        }
+
+        // ============================================================
+        // إرسال الرسالة
+        // ============================================================
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message || isGenerating) return;
+            
+            input.value = '';
+            input.style.height = 'auto';
+            
+            addMessage('user', message);
+            showTyping();
+            isGenerating = true;
+            
+            try {
+                const systemPrompt = buildSystemPrompt();
+                const response = await callAI(message, systemPrompt);
+                hideTyping();
+                addMessage('ai', response);
+                
+                // حفظ المحادثة
+                saveConversation(message, response);
+                
+            } catch (error) {
+                hideTyping();
+                addMessage('ai', `❌ خطأ: ${error.message}\n\nجرب تغيير الموديل من القائمة المنسدلة.`);
+                console.error(error);
+            } finally {
+                isGenerating = false;
+            }
+        }
+
+        function sendQuick(text) {
+            document.getElementById('messageInput').value = text;
+            sendMessage();
+        }
+
+        // ============================================================
+        // دوال الملفات
+        // ============================================================
+        function copyCode(code, btn) {
+            navigator.clipboard.writeText(code);
+            btn.textContent = '✅ تم';
+            setTimeout(() => btn.textContent = '📋 نسخ', 2000);
+        }
+
+        function downloadFile(filename, code) {
+            const blob = new Blob([code], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function showZipModal() {
+            const modal = document.getElementById('zipModal');
+            const fileList = document.getElementById('fileList');
+            
+            fileList.innerHTML = '';
+            currentFiles.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.innerHTML = `<span>📄 ${file.filename}</span><span>${file.language}</span>`;
+                fileList.appendChild(item);
+            });
+            
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('zipModal').style.display = 'none';
+        }
+
+        async function downloadZip() {
+            if (!currentFiles.length) return;
+            
+            const JSZip = window.JSZip;
+            const zip = new JSZip();
+            
+            currentFiles.forEach(file => {
+                zip.file(file.filename, file.code);
+            });
+            
+            const blob = await zip.generateAsync({ type: 'blob' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'codeforge-project.zip';
+            a.click();
+            URL.revokeObjectURL(url);
+            closeModal();
+        }
+
+        // ============================================================
+        // دوال المحادثات والواجهة
+        // ============================================================
+        function saveConversation(userMsg, aiMsg) {
+            let conv = conversations.find(c => c.id === activeId);
+            if (!conv) {
+                conv = {
+                    id: activeId,
+                    title: userMsg.slice(0, 30),
+                    messages: []
+                };
+                conversations.unshift(conv);
+            }
+            conv.messages.push({ role: 'user', content: userMsg });
+            conv.messages.push({ role: 'assistant', content: aiMsg });
+            updateHistoryList();
+            localStorage.setItem('conversations', JSON.stringify(conversations));
+            localStorage.setItem('activeId', activeId);
+        }
+
+        function updateHistoryList() {
+            const container = document.getElementById('historyList');
+            container.innerHTML = '';
+            conversations.forEach(conv => {
+                const item = document.createElement('div');
+                item.className = `history-item ${conv.id === activeId ? 'active' : ''}`;
+                item.textContent = conv.title;
+                item.onclick = () => loadConversation(conv.id);
+                container.appendChild(item);
+            });
+        }
+
+        function loadConversation(id) {
+            activeId = id;
+            const conv = conversations.find(c => c.id === id);
+            if (!conv) return;
+            
+            const container = document.getElementById('chatMessages');
+            container.innerHTML = '';
+            
+            conv.messages.forEach(msg => {
+                addMessage(msg.role, msg.content);
+            });
+            
+            updateHistoryList();
+            localStorage.setItem('activeId', activeId);
+        }
+
+        function newChat() {
+            activeId = Date.now().toString();
+            document.getElementById('chatMessages').innerHTML = `
+                <div class="welcome">
+                    <div class="welcome-icon">🚀</div>
+                    <h2>CodeForge AI Ultra</h2>
+                    <p>أقوى مولد أكواد بالعالم | مجاني بالكامل</p>
+                    <div class="suggestions">
+                        <div class="suggestion" onclick="sendQuick('ابني لي موقع متجر إلكتروني كامل مع سلة تسوق')">🛒 متجر إلكتروني</div>
+                        <div class="suggestion" onclick="sendQuick('اكتب لي REST API كامل بـ Node.js و Express')">⚙️ REST API</div>
+                        <div class="suggestion" onclick="sendQuick('ابني تطبيق React Dashboard مع Charts')">📊 React Dashboard</div>
+                        <div class="suggestion" onclick="sendQuick('اكتب لعبة بسيطة بـ HTML CSS JS')">🎮 لعبة تفاعلية</div>
+                    </div>
+                </div>
+            `;
+            updateHistoryList();
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+        }
+
+        function toggleTheme() {
+            const current = document.body.getAttribute('data-theme');
+            if (current === 'light') {
+                document.body.removeAttribute('data-theme');
+            } else {
+                document.body.setAttribute('data-theme', 'light');
+            }
+        }
+
+        // ============================================================
+        // تحميل المحادثات المحفوظة
+        // ============================================================
+        function loadSavedConversations() {
+            const saved = localStorage.getItem('conversations');
+            if (saved) {
+                conversations = JSON.parse(saved);
+                const savedId = localStorage.getItem('activeId');
+                if (savedId && conversations.find(c => c.id === savedId)) {
+                    activeId = savedId;
+                }
+                updateHistoryList();
+                if (conversations.length > 0) {
+                    loadConversation(activeId);
+                }
+            }
+        }
+
+        // Auto-resize textarea
+        document.getElementById('messageInput').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 150) + 'px';
+        });
+
+        document.getElementById('messageInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // بدء التطبيق
+        loadSavedConversations();
+    </script>
 </body>
 </html>
