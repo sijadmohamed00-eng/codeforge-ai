@@ -4,164 +4,190 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CodeForge AI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <title>CodeForge AI — مولّد الأكواد الذكي</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Tajawal:wght@300;400;500;700;900&display=swap" rel="stylesheet">
 </head>
-<body class="dark">
+<body>
 
-<canvas id="bgCanvas"></canvas>
+  <!-- شاشة إدخال API Key -->
 
-  <!-- API KEY SCREEN -->
-
-  <div class="apikey-screen" id="apikeyScreen">
-    <div class="apikey-card">
-      <div class="apikey-logo">⬡</div>
-      <h1>CodeForge <em>AI</em></h1>
-      <p>أدخل مفتاح Anthropic API الخاص بك للبدء</p>
-      <div class="apikey-input-wrap">
-        <input type="password" id="apikeyInput" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false" />
-        <button class="apikey-toggle" id="apikeyToggle" type="button">👁</button>
+  <div id="api-screen" class="api-screen">
+    <div class="api-box">
+      <div class="forge-logo">
+        <span class="logo-bracket">{</span>
+        <span class="logo-text">CF</span>
+        <span class="logo-bracket">}</span>
       </div>
-      <label class="apikey-remember">
-        <input type="checkbox" id="apikeyRemember" checked />
-        <span>احفظ المفتاح في المتصفح</span>
-      </label>
-      <button class="apikey-btn" id="apikeyBtn">ابدأ ←</button>
-      <a class="apikey-link" href="https://console.anthropic.com/keys" target="_blank">احصل على مفتاح API مجاني →</a>
-      <div class="apikey-note">🔒 المفتاح يُحفظ في متصفحك فقط</div>
+      <h1>CodeForge <span class="accent">AI</span></h1>
+      <p class="api-desc">مولّد المشاريع البرمجية الكاملة بالذكاء الاصطناعي</p>
+      <div class="api-input-group">
+        <label>أدخل مفتاح Anthropic API</label>
+        <div class="input-wrapper">
+          <input type="password" id="api-key-input" placeholder="sk-ant-api03-..." autocomplete="off" />
+          <button id="eye-btn" onclick="toggleKeyVisibility()">👁</button>
+        </div>
+        <span class="api-hint">المفتاح يُحفظ محلياً في المتصفح فقط ولا يُرسل لأي جهة</span>
+      </div>
+      <button class="btn-primary" onclick="saveApiKey()">ابدأ التشفير ←</button>
     </div>
   </div>
 
-  <!-- MAIN APP -->
+  <!-- التطبيق الرئيسي -->
 
-  <div class="app" id="appShell" style="display:none">
+  <div id="app" class="app hidden">
 
 ```
-<aside class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <div class="brand">
-      <span class="brand-icon">⬡</span>
-      <span class="brand-name">CodeForge <em>AI</em></span>
-    </div>
-    <button class="icon-btn" id="toggleSidebar">‹</button>
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <span class="logo-bracket">{</span><span class="logo-text">CF</span><span class="logo-bracket">}</span>
+    <span class="sidebar-title">CodeForge</span>
   </div>
-  <button class="new-chat-btn" id="newChatBtn"><span>+</span> محادثة جديدة</button>
-  <div class="sidebar-section-label">المحادثات</div>
-  <ul class="history-list" id="historyList"></ul>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" onclick="switchTab('chat')">
+      <span class="nav-icon">💬</span> المحادثة
+    </button>
+    <button class="nav-item" onclick="switchTab('history')">
+      <span class="nav-icon">📁</span> المشاريع السابقة
+    </button>
+    <button class="nav-item" onclick="switchTab('settings')">
+      <span class="nav-icon">⚙️</span> الإعدادات
+    </button>
+  </nav>
   <div class="sidebar-footer">
-    <label class="theme-toggle">
-      <input type="checkbox" id="themeToggle" />
-      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-      <span>الوضع الفاتح</span>
-    </label>
-    <button class="change-key-btn" id="changeKeyBtn">🔑 تغيير API Key</button>
-    <div class="version-tag">v2.1 · claude-sonnet-4-6</div>
+    <button class="btn-danger-sm" onclick="clearApiKey()">🔐 تغيير المفتاح</button>
   </div>
 </aside>
 
+<!-- Main Area -->
 <main class="main">
-  <header class="topbar">
-    <button class="icon-btn" id="openSidebar">☰</button>
-    <div class="topbar-title" id="topbarTitle">مساعد الكودنك الذكي</div>
-    <button class="icon-btn" id="clearChatBtn">🗑</button>
-  </header>
 
-  <div class="chat-container" id="chatContainer">
-    <div class="welcome-screen" id="welcomeScreen">
-      <div class="welcome-logo">⬡</div>
-      <h2>CodeForge AI</h2>
-      <p>مولّد الأكواد المتكاملة · اطلب أي مشروع وسيُنشأ كاملاً</p>
-      <div class="suggestions-grid">
-        <button class="suggest-card" data-text="ابني لي موقع متجر إلكتروني كامل بـ HTML CSS JS مع سلة التسوق وصفحة المنتجات">
-          <span class="sug-icon">🛒</span><strong>متجر إلكتروني</strong><span>HTML + CSS + JS</span>
-        </button>
-        <button class="suggest-card" data-text="اكتب REST API كامل بـ Node.js و Express مع MongoDB لإدارة المستخدمين و JWT">
-          <span class="sug-icon">⚙️</span><strong>REST API</strong><span>Node.js + Express</span>
-        </button>
-        <button class="suggest-card" data-text="ابني داشبورد إدارة كامل بـ React مع Recharts وجداول بيانات وتصميم احترافي">
-          <span class="sug-icon">📊</span><strong>Dashboard React</strong><span>Charts + Tables</span>
-        </button>
-        <button class="suggest-card" data-text="اكتب تطبيق Flutter كامل لإدارة المهام مع قاعدة بيانات SQLite محلية">
-          <span class="sug-icon">📱</span><strong>Flutter App</strong><span>Todo + SQLite</span>
-        </button>
-        <button class="suggest-card" data-text="ابني موقع شركة احترافي بـ HTML CSS مع Animations وتصميم حديث Responsive">
-          <span class="sug-icon">🏢</span><strong>موقع شركة</strong><span>HTML + CSS</span>
-        </button>
-        <button class="suggest-card" data-text="اكتب Python script كامل لتحليل بيانات CSV مع Pandas وعرض إحصائيات Matplotlib">
-          <span class="sug-icon">🐍</span><strong>Python Analysis</strong><span>Pandas + Charts</span>
-        </button>
+  <!-- TAB: Chat -->
+  <section id="tab-chat" class="tab-section active">
+    <div class="chat-header">
+      <h2>مولّد الأكواد <span class="accent">الذكي</span></h2>
+      <p class="chat-subtitle">صف مشروعك وسيولّد النظام الكود الكامل لك</p>
+    </div>
+
+    <div class="messages-area" id="messages-area">
+      <div class="welcome-msg">
+        <div class="welcome-icon">⚡</div>
+        <h3>جاهز للبناء</h3>
+        <p>أخبرني عن مشروعك — موقع، تطبيق، API، قاعدة بيانات، أو أي شيء تريده</p>
+        <div class="example-chips">
+          <button class="chip" onclick="fillExample(this)">موقع تسوق إلكتروني كامل</button>
+          <button class="chip" onclick="fillExample(this)">نظام إدارة موظفين</button>
+          <button class="chip" onclick="fillExample(this)">بوت تليغرام</button>
+          <button class="chip" onclick="fillExample(this)">REST API بـ Node.js</button>
+          <button class="chip" onclick="fillExample(this)">لوحة تحكم Dashboard</button>
+        </div>
       </div>
     </div>
-    <div class="messages-list" id="messagesList"></div>
-  </div>
 
-  <div class="input-bar-wrap">
-    <div class="input-bar">
-      <div class="input-options">
-        <select id="langSelect" class="lang-select">
-          <option value="auto">🔮 تلقائي</option>
+    <div class="input-area">
+      <div class="options-bar">
+        <label class="option-toggle">
+          <input type="checkbox" id="opt-comments" checked />
+          <span>تعليقات الكود</span>
+        </label>
+        <label class="option-toggle">
+          <input type="checkbox" id="opt-readme" checked />
+          <span>README</span>
+        </label>
+        <label class="option-toggle">
+          <input type="checkbox" id="opt-structure" checked />
+          <span>هيكل المشروع</span>
+        </label>
+        <select id="lang-select" class="lang-select">
+          <option value="auto">لغة تلقائية</option>
           <option value="html">HTML/CSS/JS</option>
           <option value="react">React</option>
-          <option value="vue">Vue.js</option>
           <option value="python">Python</option>
-          <option value="node">Node.js</option>
-          <option value="flutter">Flutter</option>
+          <option value="nodejs">Node.js</option>
           <option value="php">PHP</option>
-          <option value="java">Java</option>
-          <option value="cpp">C++</option>
-        </select>
-        <select id="sizeSelect" class="lang-select">
-          <option value="small">مختصر</option>
-          <option value="medium" selected>متوسط</option>
-          <option value="large">كامل ومفصّل</option>
+          <option value="flutter">Flutter</option>
         </select>
       </div>
-      <div class="input-row">
-        <textarea id="userInput" placeholder="اطلب أي مشروع أو كود…" rows="1"></textarea>
-        <button class="send-btn" id="sendBtn"><span id="sendIcon">➤</span></button>
+      <div class="textarea-wrapper">
+        <textarea id="user-input" placeholder="صف مشروعك بالتفصيل... كلما كان الوصف أدق كانت النتيجة أفضل" rows="3"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">
+          <span id="send-icon">⚡</span>
+        </button>
       </div>
     </div>
-    <div class="input-hint">CodeForge AI · claude-sonnet-4-6</div>
-  </div>
+  </section>
+
+  <!-- TAB: History -->
+  <section id="tab-history" class="tab-section hidden">
+    <div class="tab-header">
+      <h2>المشاريع السابقة</h2>
+      <button class="btn-sm" onclick="clearHistory()">🗑 مسح الكل</button>
+    </div>
+    <div id="history-list" class="history-list">
+      <div class="empty-state">لا توجد مشاريع محفوظة بعد</div>
+    </div>
+  </section>
+
+  <!-- TAB: Settings -->
+  <section id="tab-settings" class="tab-section hidden">
+    <div class="tab-header"><h2>الإعدادات</h2></div>
+    <div class="settings-grid">
+      <div class="setting-card">
+        <h3>نموذج الذكاء الاصطناعي</h3>
+        <select id="model-select" class="full-select">
+          <option value="claude-opus-4-5">Claude Opus 4.5 (الأقوى)</option>
+          <option value="claude-sonnet-4-5" selected>Claude Sonnet 4.5 (موصى به)</option>
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (الأسرع)</option>
+        </select>
+      </div>
+      <div class="setting-card">
+        <h3>حد الرموز (Tokens)</h3>
+        <input type="number" id="max-tokens" value="8000" min="1000" max="32000" class="full-input" />
+        <span class="hint">الحد الأقصى للرموز في كل استجابة</span>
+      </div>
+      <div class="setting-card">
+        <h3>درجة الإبداع</h3>
+        <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.3" class="range-input" />
+        <div class="range-labels"><span>دقيق</span><span id="temp-val">0.3</span><span>إبداعي</span></div>
+      </div>
+      <div class="setting-card">
+        <h3>مفتاح API</h3>
+        <div class="api-status">
+          <span class="status-dot"></span>
+          <span>متصل ✓</span>
+        </div>
+        <button class="btn-danger-sm mt-8" onclick="clearApiKey()">تغيير المفتاح</button>
+      </div>
+    </div>
+  </section>
+
 </main>
 ```
 
   </div>
 
-  <!-- Code Block Template -->
+  <!-- Modal: Code Viewer -->
 
-  <template id="codeBlockTpl">
-    <div class="code-block">
-      <div class="code-header">
-        <span class="code-lang-badge"></span>
-        <span class="code-filename"></span>
-        <div class="code-actions">
-          <button class="code-btn copy-btn">📋 نسخ</button>
-          <button class="code-btn dl-btn">⬇ تحميل</button>
+  <div id="code-modal" class="modal hidden">
+    <div class="modal-overlay" onclick="closeModal()"></div>
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-title">عرض الكود</h3>
+        <div class="modal-actions">
+          <button class="btn-sm" onclick="copyModalCode()">📋 نسخ</button>
+          <button class="btn-sm" onclick="downloadModalCode()">💾 تحميل</button>
+          <button class="btn-icon" onclick="closeModal()">✕</button>
         </div>
       </div>
-      <pre><code></code></pre>
-    </div>
-  </template>
-
-  <!-- ZIP Modal -->
-
-  <div class="modal-overlay" id="zipModal">
-    <div class="modal">
-      <div class="modal-icon">📦</div>
-      <h3>تحميل المشروع كاملاً</h3>
-      <p id="zipModalDesc"></p>
-      <div class="modal-files" id="zipFilesList"></div>
-      <div class="modal-actions">
-        <button class="btn-primary" id="zipDownloadBtn">⬇ تحميل ZIP</button>
-        <button class="btn-secondary" id="zipCancelBtn">إلغاء</button>
-      </div>
+      <pre id="modal-code" class="modal-code"></pre>
     </div>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <!-- Toast -->
+
+  <div id="toast" class="toast hidden"></div>
 
   <script src="script.js"></script>
 
