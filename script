@@ -1,0 +1,721 @@
+/* ═══════════════════════════════════════════════════
+CodeForge AI — script.js
+Full AI-powered code generation with JSZip export
+═══════════════════════════════════════════════════ */
+
+‘use strict’;
+
+/* ── Constants ── */
+const API_URL = ‘https://api.anthropic.com/v1/messages’;
+const MODEL   = ‘claude-sonnet-4-6’;
+
+/* ── State ── */
+const state = {
+conversations: [],      // [{id, title, messages:[]}]
+activeId: null,
+generating: false,
+pendingFiles: [],        // files extracted from last AI response
+};
+
+/* ── DOM refs ── */
+const $  = id => document.getElementById(id);
+const els = {
+sidebar:       $(‘sidebar’),
+toggleSidebar: $(‘toggleSidebar’),
+openSidebar:   $(‘openSidebar’),
+newChatBtn:    $(‘newChatBtn’),
+historyList:   $(‘historyList’),
+themeToggle:   $(‘themeToggle’),
+topbarTitle:   $(‘topbarTitle’),
+clearChatBtn:  $(‘clearChatBtn’),
+chatContainer: $(‘chatContainer’),
+welcomeScreen: $(‘welcomeScreen’),
+messagesList:  $(‘messagesList’),
+userInput:     $(‘userInput’),
+sendBtn:       $(‘sendBtn’),
+sendIcon:      $(‘sendIcon’),
+langSelect:    $(‘langSelect’),
+sizeSelect:    $(‘sizeSelect’),
+zipModal:      $(‘zipModal’),
+zipModalDesc:  $(‘zipModalDesc’),
+zipFilesList:  $(‘zipFilesList’),
+zipDownloadBtn:$(‘zipDownloadBtn’),
+zipCancelBtn:  $(‘zipCancelBtn’),
+};
+
+/* ═══════════════════════════════════════════
+BACKGROUND CANVAS — animated dot grid
+═══════════════════════════════════════════ */
+(function initCanvas() {
+const canvas = $(‘bgCanvas’);
+const ctx    = canvas.getContext(‘2d’);
+let W, H, dots = [];
+
+function resize() {
+W = canvas.width  = window.innerWidth;
+H = canvas.height = window.innerHeight;
+buildDots();
+}
+
+function buildDots() {
+dots = [];
+const spacing = 36;
+for (let x = 0; x < W; x += spacing) {
+for (let y = 0; y < H; y += spacing) {
+dots.push({ x, y, r: Math.random() * 1.1 + 0.3, o: Math.random() });
+}
+}
+}
+
+function draw(t) {
+ctx.clearRect(0, 0, W, H);
+const light = document.body.classList.contains(‘light’);
+const base  = light ? ‘30,40,60’ : ‘56,189,248’;
+
+```
+dots.forEach((d, i) => {
+  d.o = 0.08 + 0.12 * Math.sin(t * 0.0008 + i * 0.3);
+  ctx.beginPath();
+  ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(${base}, ${d.o})`;
+  ctx.fill();
+});
+
+requestAnimationFrame(draw);
+```
+
+}
+
+window.addEventListener(‘resize’, resize);
+resize();
+requestAnimationFrame(draw);
+})();
+
+/* ═══════════════════════════════════════════
+SYSTEM PROMPT BUILDER
+═══════════════════════════════════════════ */
+function buildSystemPrompt(lang, size) {
+const sizeMap = {
+small:  ‘قصير ومختصر (200-400 سطر لكل ملف)’,
+medium: ‘متوسط ومفصّل (400-800 سطر لكل ملف)’,
+large:  ‘كامل ومفصّل جداً بدون اختصار (800-2000+ سطر لكل ملف)’,
+};
+
+return `أنت CodeForge AI، مهندس برمجيات خبير متخصص في توليد أكواد برمجية كاملة وعالية الجودة.
+
+## قواعد الإخراج الأساسية:
+
+1. **ولّد دائماً كوداً كاملاً** — لا تختصر أبداً، لا تكتب “… بقية الكود” أو “// TODO”.
+1. **حجم الكود المطلوب**: ${sizeMap[size] || sizeMap.medium}.
+1. **اللغة المفضّلة**: ${lang === ‘auto’ ? ‘اختر أنسب لغة تلقائياً’ : lang}.
+
+## صيغة الإخراج المطلوبة (مهم جداً — اتبعها حرفياً):
+
+أولاً: ابدأ بمقدمة قصيرة عن المشروع (2-3 جمل).
+
+ثانياً: لكل ملف، استخدم هذا الشكل بالضبط:
+
+```[LANG]:[FILENAME]
+[FULL CODE HERE]
+```
+
+أمثلة:
+```html:index.html
+…
+```
+```css:style.css
+…
+```
+```javascript:script.js
+…
+```
+```python:main.py
+…
+```
+
+ثالثاً: في نهاية ردّك، أضف قسم “📋 ملخص الملفات:” وأدرج قائمة بكل الملفات مع وصف مختصر.
+
+## معايير جودة الكود:
+
+- تعليقات واضحة بالعربية أو الإنجليزية
+- Clean Code & Best Practices
+- Responsive Design إذا كان الكود للواجهة
+- معالجة الأخطاء (Error Handling)
+- أمان الكود (لا SQL Injection، لا XSS، إلخ)
+- كل المتغيرات والدوال مسمّاة بشكل واضح
+
+## ملاحظات إضافية:
+
+- إذا المشروع كبير، قسّمه إلى ملفات متعددة منطقياً
+- اكتب Backend + Frontend إذا طُلب ذلك
+- أضف package.json أو requirements.txt عند الحاجة
+- لا تستخدم placeholder أو lorem ipsum في الكود النهائي`;
+  }
+
+/* ═══════════════════════════════════════════
+SYNTAX HIGHLIGHTER (client-side, regex)
+═══════════════════════════════════════════ */
+function highlight(code, lang) {
+// Escape HTML first
+let c = code
+.replace(/&/g, ‘&’)
+.replace(/</g, ‘<’)
+.replace(/>/g, ‘>’);
+
+if ([‘html’, ‘xml’].includes(lang)) {
+c = c
+.replace(/(</?)([\w-]+)/g, ‘$1<span class="t-tag">$2</span>’)
+.replace(/([\w-]+)(=)/g, ‘<span class="t-attr">$1</span>$2’)
+.replace(/(”.*?”)/g, ‘<span class="t-str">$1</span>’)
+.replace(/(//.*)/g, ‘<span class="t-cm">$1</span>’);
+} else if (lang === ‘css’ || lang === ‘scss’) {
+c = c
+.replace(/(/*[\s\S]*?*/)/g, ‘<span class="t-cm">$1</span>’)
+.replace(/([.#][\w-]+(?:\s*,\s*[.#][\w-]+)*)\s*{/g, ‘<span class="t-sel">$1</span> {’)
+.replace(/([\w-]+)\s*:/g, ‘<span class="t-attr">$1</span>:’)
+.replace(/:\s*([^;{}]+)/g, ‘: <span class="t-str">$1</span>’)
+.replace(/(\d+(?:.\d+)?(?:px|em|rem|%|vh|vw|s|ms))/g, ‘<span class="t-num">$1</span>’);
+} else if ([‘js’, ‘javascript’, ‘ts’, ‘typescript’].includes(lang)) {
+c = c
+.replace(/(//.*)/g, ‘<span class="t-cm">$1</span>’)
+.replace(/(/*[\s\S]*?*/)/g, ‘<span class="t-cm">$1</span>’)
+.replace(/\b(const|let|var|function|class|return|if|else|for|while|do|switch|case|break|continue|import|export|default|async|await|try|catch|finally|new|this|typeof|instanceof|of|in|from|extends|super|static|get|set|yield|void|delete|throw)\b/g, ‘<span class="t-kw">$1</span>’)
+.replace(/\b([A-Z][a-zA-Z0-9_]*)\b/g, ‘<span class="t-cls">$1</span>’)
+.replace(/\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(/g, ‘<span class="t-fn">$1</span>(’)
+.replace(/(”(?:[^”\]|\.)*”|’(?:[^’\]|\.)*’|`(?:[^`\]|\.)*`)/g, ‘<span class="t-str">$1</span>’)
+.replace(/\b(\d+(?:.\d+)?)\b/g, ‘<span class="t-num">$1</span>’);
+} else if ([‘python’, ‘py’].includes(lang)) {
+c = c
+.replace(/(#.*)/g, ‘<span class="t-cm">$1</span>’)
+.replace(/(”””[\s\S]*?”””|’’’[\s\S]*?’’’)/g, ‘<span class="t-cm">$1</span>’)
+.replace(/\b(def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|pass|break|continue|lambda|yield|global|nonlocal|and|or|not|in|is|True|False|None|async|await)\b/g, ‘<span class="t-kw">$1</span>’)
+.replace(/\b([A-Z][a-zA-Z0-9_]*)\b/g, ‘<span class="t-cls">$1</span>’)
+.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(/g, ‘<span class="t-fn">$1</span>(’)
+.replace(/(”(?:[^”\]|\.)*”|’(?:[^’\]|\.)*’)/g, ‘<span class="t-str">$1</span>’)
+.replace(/\b(\d+(?:.\d+)?)\b/g, ‘<span class="t-num">$1</span>’);
+} else {
+// Generic — just strings and comments
+c = c
+.replace(/(//.*|#.*)/g, ‘<span class="t-cm">$1</span>’)
+.replace(/(”(?:[^”\]|\.)*”|’(?:[^’\]|\.)*’)/g, ‘<span class="t-str">$1</span>’)
+.replace(/\b(\d+(?:.\d+)?)\b/g, ‘<span class="t-num">$1</span>’);
+}
+
+return c;
+}
+
+/* ═══════════════════════════════════════════
+CODE BLOCK BUILDER
+═══════════════════════════════════════════ */
+function buildCodeBlock(lang, filename, rawCode) {
+const tpl    = document.getElementById(‘codeBlockTpl’).content.cloneNode(true);
+const block  = tpl.querySelector(’.code-block’);
+const badge  = tpl.querySelector(’.code-lang-badge’);
+const fnEl   = tpl.querySelector(’.code-filename’);
+const codeEl = tpl.querySelector(‘code’);
+const copyBtn= tpl.querySelector(’.copy-btn’);
+const dlBtn  = tpl.querySelector(’.dl-btn’);
+
+badge.textContent     = lang.toUpperCase();
+fnEl.textContent      = filename || ‘’;
+codeEl.innerHTML      = highlight(rawCode, lang);
+
+// Copy
+copyBtn.addEventListener(‘click’, () => {
+navigator.clipboard.writeText(rawCode).then(() => {
+copyBtn.textContent = ‘✅ تم النسخ’;
+copyBtn.classList.add(‘copied’);
+setTimeout(() => {
+copyBtn.textContent = ‘📋 نسخ’;
+copyBtn.classList.remove(‘copied’);
+}, 2000);
+});
+});
+
+// Download single file
+dlBtn.addEventListener(‘click’, () => {
+const blob = new Blob([rawCode], { type: ‘text/plain;charset=utf-8’ });
+const a    = document.createElement(‘a’);
+a.href     = URL.createObjectURL(blob);
+a.download = filename || `code.${lang}`;
+a.click();
+});
+
+return block;
+}
+
+/* ═══════════════════════════════════════════
+PARSE AI RESPONSE → files array
+═══════════════════════════════════════════ */
+function parseFiles(text) {
+const files = [];
+// Matches `lang:filename ... ` OR `lang ... `
+const re = /`([\w#+.\-]+)(?::([^\n]+))?\n([\s\S]*?)`/g;
+let m;
+while ((m = re.exec(text)) !== null) {
+const lang     = m[1].toLowerCase().replace(/^(html|css|js|javascript|python|py|ts|typescript|jsx|tsx|vue|php|java|cpp|c|cs|csharp|go|rust|dart|kotlin|swift|sql|yaml|json|xml|md|bash|sh|ruby|rb)$/i, ‘$1’);
+const filename = (m[2] || ‘’).trim() || guessFilename(lang, files.length);
+const code     = m[3];
+files.push({ lang, filename, code });
+}
+return files;
+}
+
+function guessFilename(lang, idx) {
+const map = {
+html: ‘index.html’, css: ‘style.css’,
+javascript: ‘script.js’, js: ‘script.js’,
+typescript: ‘app.ts’, ts: ‘app.ts’,
+python: ‘main.py’, py: ‘main.py’,
+java: ‘Main.java’, cpp: ‘main.cpp’,
+csharp: ‘Program.cs’, cs: ‘Program.cs’,
+dart: ‘main.dart’, vue: ‘App.vue’,
+php: ‘index.php’, go: ‘main.go’,
+rust: ‘main.rs’, ruby: ‘main.rb’,
+sql: ‘schema.sql’, json: ‘data.json’,
+yaml: ‘config.yaml’, bash: ‘run.sh’, sh: ‘run.sh’,
+};
+return map[lang] || `file_${idx + 1}.${lang}`;
+}
+
+/* ═══════════════════════════════════════════
+STRIP CODE BLOCKS → clean prose
+═══════════════════════════════════════════ */
+function stripCodeBlocks(text) {
+return text.replace(/`[\s\S]*?`/g, ‘’).trim();
+}
+
+/* ═══════════════════════════════════════════
+RENDER AI MESSAGE
+═══════════════════════════════════════════ */
+function renderAIMessage(text, isStreaming = false) {
+const files = parseFiles(text);
+const prose = stripCodeBlocks(text);
+
+const wrap   = document.createElement(‘div’);
+wrap.className = ‘msg-wrap ai’;
+
+// Avatar
+const av = document.createElement(‘div’);
+av.className  = ‘msg-avatar ai-av’;
+av.textContent = ‘⬡’;
+
+const body = document.createElement(‘div’);
+body.className = ‘msg-body’;
+
+// Project header if we have multiple files
+if (files.length > 1 || (files.length === 1 && !isStreaming)) {
+const ph = document.createElement(‘div’);
+ph.className = ‘project-header’;
+
+```
+const pt = document.createElement('div');
+pt.className = 'project-title';
+pt.innerHTML = `<span>📁</span> <span>${files.length} ملف${files.length > 1 ? 'ات' : ''} مولَّد${files.length > 1 ? 'ة' : ''}</span>`;
+
+const pa = document.createElement('div');
+pa.className = 'project-actions';
+
+const zipBtn = document.createElement('button');
+zipBtn.className   = 'btn-zip';
+zipBtn.textContent = '📦 تحميل ZIP';
+zipBtn.addEventListener('click', () => openZipModal(files));
+
+pa.appendChild(zipBtn);
+ph.appendChild(pt);
+ph.appendChild(pa);
+body.appendChild(ph);
+```
+
+}
+
+// Prose bubble
+if (prose) {
+const bubble = document.createElement(‘div’);
+bubble.className = ‘msg-bubble’;
+bubble.innerHTML = formatProse(prose, isStreaming);
+body.appendChild(bubble);
+}
+
+// Code blocks
+files.forEach((f, i) => {
+if (files.length > 1) {
+const div = document.createElement(‘div’);
+div.className = ‘part-divider’;
+div.innerHTML = `<span>📄 الجزء ${i + 1} — ${f.filename}</span>`;
+body.appendChild(div);
+}
+body.appendChild(buildCodeBlock(f.lang, f.filename, f.code));
+});
+
+wrap.appendChild(av);
+wrap.appendChild(body);
+return wrap;
+}
+
+function formatProse(text, isStreaming) {
+let t = text
+.replace(/**(.*?)**/g, ‘<strong>$1</strong>’)
+.replace(/*(.*?)*/g, ‘<em>$1</em>’)
+.replace(/`([^`]+)`/g, `<code style="background:var(--surface3);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);font-size:13px">$1</code>`)
+.replace(/\n\n/g, ‘</p><p>’)
+.replace(/\n/g, ‘<br>’);
+t = ‘<p>’ + t + ‘</p>’;
+if (isStreaming) t += ‘<span class="stream-cursor"></span>’;
+return t;
+}
+
+/* ═══════════════════════════════════════════
+RENDER USER MESSAGE
+═══════════════════════════════════════════ */
+function renderUserMessage(text) {
+const wrap   = document.createElement(‘div’);
+wrap.className = ‘msg-wrap user’;
+
+const av = document.createElement(‘div’);
+av.className  = ‘msg-avatar user-av’;
+av.textContent = ‘👤’;
+
+const body   = document.createElement(‘div’);
+body.className = ‘msg-body’;
+
+const bubble = document.createElement(‘div’);
+bubble.className = ‘msg-bubble’;
+bubble.textContent = text;
+
+body.appendChild(bubble);
+wrap.appendChild(av);
+wrap.appendChild(body);
+return wrap;
+}
+
+/* ═══════════════════════════════════════════
+TYPING INDICATOR
+═══════════════════════════════════════════ */
+function renderTyping() {
+const wrap   = document.createElement(‘div’);
+wrap.className = ‘msg-wrap ai’;
+wrap.id        = ‘typingIndicator’;
+
+const av = document.createElement(‘div’);
+av.className  = ‘msg-avatar ai-av’;
+av.textContent = ‘⬡’;
+
+const body = document.createElement(‘div’);
+body.className = ‘msg-body’;
+
+const ind = document.createElement(‘div’);
+ind.className = ‘typing-indicator’;
+ind.innerHTML = ‘<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>’;
+
+body.appendChild(ind);
+wrap.appendChild(av);
+wrap.appendChild(body);
+return wrap;
+}
+
+/* ═══════════════════════════════════════════
+SCROLL TO BOTTOM
+═══════════════════════════════════════════ */
+function scrollBottom() {
+const c = els.chatContainer;
+c.scrollTop = c.scrollHeight;
+}
+
+/* ═══════════════════════════════════════════
+ACTIVE CONVERSATION HELPERS
+═══════════════════════════════════════════ */
+function getActiveConv() {
+return state.conversations.find(c => c.id === state.activeId);
+}
+
+function newConversation(firstMsg) {
+const id    = Date.now().toString();
+const title = firstMsg.slice(0, 42) + (firstMsg.length > 42 ? ‘…’ : ‘’);
+const conv  = { id, title, messages: [] };
+state.conversations.unshift(conv);
+state.activeId = id;
+renderHistoryList();
+return conv;
+}
+
+function renderHistoryList() {
+els.historyList.innerHTML = ‘’;
+state.conversations.forEach(conv => {
+const li = document.createElement(‘li’);
+li.className   = ‘history-item’ + (conv.id === state.activeId ? ’ active’ : ‘’);
+li.textContent = conv.title;
+li.addEventListener(‘click’, () => switchConversation(conv.id));
+els.historyList.appendChild(li);
+});
+}
+
+function switchConversation(id) {
+state.activeId = id;
+renderHistoryList();
+const conv = getActiveConv();
+els.topbarTitle.textContent = conv ? conv.title : ‘مساعد الكودنك الذكي’;
+els.messagesList.innerHTML = ‘’;
+els.welcomeScreen.style.display = ‘none’;
+if (conv) {
+conv.messages.forEach(m => {
+if (m.role === ‘user’) {
+els.messagesList.appendChild(renderUserMessage(m.content));
+} else {
+els.messagesList.appendChild(renderAIMessage(m.content));
+}
+});
+}
+scrollBottom();
+}
+
+/* ═══════════════════════════════════════════
+SEND MESSAGE & CALL API
+═══════════════════════════════════════════ */
+async function sendMessage() {
+const text = els.userInput.value.trim();
+if (!text || state.generating) return;
+
+const lang = els.langSelect.value;
+const size = els.sizeSelect.value;
+
+// Init conversation if needed
+let conv = getActiveConv();
+if (!conv) {
+conv = newConversation(text);
+els.welcomeScreen.style.display = ‘none’;
+}
+
+// Add user msg to state & UI
+conv.messages.push({ role: ‘user’, content: text });
+els.messagesList.appendChild(renderUserMessage(text));
+els.userInput.value = ‘’;
+autoResize(els.userInput);
+
+// Show typing
+const typing = renderTyping();
+els.messagesList.appendChild(typing);
+scrollBottom();
+
+// Disable input
+state.generating = true;
+els.sendBtn.disabled = true;
+els.sendIcon.innerHTML = ‘<span class="spinner"></span>’;
+
+try {
+// Build messages array (history)
+const messages = conv.messages.map(m => ({
+role: m.role,
+content: m.content,
+}));
+
+```
+const response = await fetch(API_URL, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    model: MODEL,
+    max_tokens: 8192,
+    system: buildSystemPrompt(lang, size),
+    messages,
+  }),
+});
+
+if (!response.ok) {
+  const err = await response.json().catch(() => ({}));
+  throw new Error(err.error?.message || `HTTP ${response.status}`);
+}
+
+const data = await response.json();
+const aiText = data.content
+  .filter(b => b.type === 'text')
+  .map(b => b.text)
+  .join('\n');
+
+// Remove typing, add AI msg
+typing.remove();
+conv.messages.push({ role: 'assistant', content: aiText });
+
+// Store files for ZIP
+state.pendingFiles = parseFiles(aiText);
+
+const aiEl = renderAIMessage(aiText);
+els.messagesList.appendChild(aiEl);
+scrollBottom();
+```
+
+} catch (err) {
+typing.remove();
+
+```
+// Show error message
+const errWrap   = document.createElement('div');
+errWrap.className = 'msg-wrap ai';
+
+const av = document.createElement('div');
+av.className  = 'msg-avatar ai-av';
+av.textContent = '⬡';
+
+const body   = document.createElement('div');
+body.className = 'msg-body';
+
+const bubble = document.createElement('div');
+bubble.className = 'msg-bubble';
+bubble.style.borderColor = 'var(--red)';
+bubble.style.color       = 'var(--red)';
+bubble.innerHTML = `
+  <strong>⚠️ حدث خطأ</strong><br>
+  ${escapeHtml(err.message)}<br><br>
+  <small style="color:var(--text3)">تأكد من صحة اتصالك ثم أعد المحاولة.</small>
+`;
+
+body.appendChild(bubble);
+errWrap.appendChild(av);
+errWrap.appendChild(body);
+els.messagesList.appendChild(errWrap);
+scrollBottom();
+```
+
+} finally {
+state.generating   = false;
+els.sendBtn.disabled = false;
+els.sendIcon.textContent = ‘➤’;
+}
+}
+
+function escapeHtml(str) {
+return String(str)
+.replace(/&/g,’&’).replace(/</g,’<’)
+.replace(/>/g,’>’).replace(/”/g,’"’);
+}
+
+/* ═══════════════════════════════════════════
+ZIP MODAL
+═══════════════════════════════════════════ */
+function openZipModal(files) {
+state.pendingFiles = files;
+els.zipModalDesc.textContent = `${files.length} ملف/ملفات جاهزة للتحميل`;
+els.zipFilesList.innerHTML   = ‘’;
+
+files.forEach(f => {
+const item = document.createElement(‘div’);
+item.className = ‘modal-file-item’;
+item.innerHTML = `<span>📄</span> ${escapeHtml(f.filename)} <span style="color:var(--text3);margin-right:auto">${f.lang.toUpperCase()}</span>`;
+els.zipFilesList.appendChild(item);
+});
+
+els.zipModal.removeAttribute(‘hidden’);
+}
+
+async function downloadZip() {
+const files = state.pendingFiles;
+if (!files.length) return;
+
+const zip = new JSZip();
+files.forEach(f => zip.file(f.filename, f.code));
+
+const blob = await zip.generateAsync({ type: ‘blob’ });
+const url  = URL.createObjectURL(blob);
+const a    = document.createElement(‘a’);
+a.href     = url;
+a.download = ‘codeforge-project.zip’;
+a.click();
+URL.revokeObjectURL(url);
+
+els.zipModal.setAttribute(‘hidden’, ‘’);
+}
+
+/* ═══════════════════════════════════════════
+TEXTAREA AUTO-RESIZE
+═══════════════════════════════════════════ */
+function autoResize(el) {
+el.style.height = ‘auto’;
+el.style.height = Math.min(el.scrollHeight, 180) + ‘px’;
+}
+
+/* ═══════════════════════════════════════════
+THEME
+═══════════════════════════════════════════ */
+function applyTheme(light) {
+document.body.classList.toggle(‘light’, light);
+document.body.classList.toggle(‘dark’,  !light);
+localStorage.setItem(‘codeforge-theme’, light ? ‘light’ : ‘dark’);
+}
+
+/* ═══════════════════════════════════════════
+EVENT LISTENERS
+═══════════════════════════════════════════ */
+
+// Send button
+els.sendBtn.addEventListener(‘click’, sendMessage);
+
+// Enter to send (Shift+Enter = new line)
+els.userInput.addEventListener(‘keydown’, e => {
+if (e.key === ‘Enter’ && !e.shiftKey) {
+e.preventDefault();
+sendMessage();
+}
+});
+
+// Auto-resize textarea
+els.userInput.addEventListener(‘input’, () => autoResize(els.userInput));
+
+// Suggestion cards
+document.querySelectorAll(’.suggest-card’).forEach(btn => {
+btn.addEventListener(‘click’, () => {
+els.userInput.value = btn.dataset.text;
+autoResize(els.userInput);
+els.userInput.focus();
+});
+});
+
+// New chat
+els.newChatBtn.addEventListener(‘click’, () => {
+state.activeId = null;
+els.messagesList.innerHTML = ‘’;
+els.welcomeScreen.style.display = ‘’;
+els.topbarTitle.textContent = ‘مساعد الكودنك الذكي’;
+renderHistoryList();
+});
+
+// Clear chat
+els.clearChatBtn.addEventListener(‘click’, () => {
+const conv = getActiveConv();
+if (conv) {
+conv.messages = [];
+els.messagesList.innerHTML = ‘’;
+els.welcomeScreen.style.display = ‘’;
+}
+});
+
+// Sidebar toggle
+els.toggleSidebar.addEventListener(‘click’, () => {
+els.sidebar.classList.toggle(‘collapsed’);
+});
+els.openSidebar.addEventListener(‘click’, () => {
+els.sidebar.classList.remove(‘collapsed’);
+});
+
+// Theme toggle
+els.themeToggle.addEventListener(‘change’, e => applyTheme(e.target.checked));
+
+// ZIP modal
+els.zipDownloadBtn.addEventListener(‘click’, downloadZip);
+els.zipCancelBtn.addEventListener(‘click’, () => els.zipModal.setAttribute(‘hidden’,’’));
+els.zipModal.addEventListener(‘click’, e => {
+if (e.target === els.zipModal) els.zipModal.setAttribute(‘hidden’,’’);
+});
+
+/* ═══════════════════════════════════════════
+INIT
+═══════════════════════════════════════════ */
+(function init() {
+// Restore theme
+const saved = localStorage.getItem(‘codeforge-theme’);
+const light = saved === ‘light’;
+els.themeToggle.checked = light;
+applyTheme(light);
+
+// Focus input
+els.userInput.focus();
+})();
