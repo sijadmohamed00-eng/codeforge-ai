@@ -1,721 +1,670 @@
-/* ═══════════════════════════════════════════════════
+/* ============================================================
 CodeForge AI — script.js
-Full AI-powered code generation with JSZip export
-═══════════════════════════════════════════════════ */
+مولّد الأكواد الذكي باستخدام Anthropic API
+============================================================ */
 
 ‘use strict’;
 
-/* ── Constants ── */
-const API_URL = ‘https://api.anthropic.com/v1/messages’;
-const MODEL   = ‘claude-sonnet-4-6’;
-
-/* ── State ── */
-const state = {
-conversations: [],      // [{id, title, messages:[]}]
-activeId: null,
-generating: false,
-pendingFiles: [],        // files extracted from last AI response
+// ───────────────────────────── STATE ─────────────────────────────
+const State = {
+apiKey: ‘’,
+model: ‘claude-sonnet-4-5’,
+maxTokens: 8000,
+temperature: 0.3,
+history: [],         // مشاريع محفوظة
+currentFiles: [],    // ملفات المشروع الحالي
+isLoading: false,
 };
 
-/* ── DOM refs ── */
-const $  = id => document.getElementById(id);
-const els = {
-sidebar:       $(‘sidebar’),
-toggleSidebar: $(‘toggleSidebar’),
-openSidebar:   $(‘openSidebar’),
-newChatBtn:    $(‘newChatBtn’),
-historyList:   $(‘historyList’),
-themeToggle:   $(‘themeToggle’),
-topbarTitle:   $(‘topbarTitle’),
-clearChatBtn:  $(‘clearChatBtn’),
-chatContainer: $(‘chatContainer’),
-welcomeScreen: $(‘welcomeScreen’),
-messagesList:  $(‘messagesList’),
-userInput:     $(‘userInput’),
-sendBtn:       $(‘sendBtn’),
-sendIcon:      $(‘sendIcon’),
-langSelect:    $(‘langSelect’),
-sizeSelect:    $(‘sizeSelect’),
-zipModal:      $(‘zipModal’),
-zipModalDesc:  $(‘zipModalDesc’),
-zipFilesList:  $(‘zipFilesList’),
-zipDownloadBtn:$(‘zipDownloadBtn’),
-zipCancelBtn:  $(‘zipCancelBtn’),
-};
-
-/* ═══════════════════════════════════════════
-BACKGROUND CANVAS — animated dot grid
-═══════════════════════════════════════════ */
-(function initCanvas() {
-const canvas = $(‘bgCanvas’);
-const ctx    = canvas.getContext(‘2d’);
-let W, H, dots = [];
-
-function resize() {
-W = canvas.width  = window.innerWidth;
-H = canvas.height = window.innerHeight;
-buildDots();
-}
-
-function buildDots() {
-dots = [];
-const spacing = 36;
-for (let x = 0; x < W; x += spacing) {
-for (let y = 0; y < H; y += spacing) {
-dots.push({ x, y, r: Math.random() * 1.1 + 0.3, o: Math.random() });
-}
-}
-}
-
-function draw(t) {
-ctx.clearRect(0, 0, W, H);
-const light = document.body.classList.contains(‘light’);
-const base  = light ? ‘30,40,60’ : ‘56,189,248’;
-
-```
-dots.forEach((d, i) => {
-  d.o = 0.08 + 0.12 * Math.sin(t * 0.0008 + i * 0.3);
-  ctx.beginPath();
-  ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(${base}, ${d.o})`;
-  ctx.fill();
+// ───────────────────────── INIT ──────────────────────────────────
+document.addEventListener(‘DOMContentLoaded’, () => {
+loadSettings();
+checkApiKey();
+setupEventListeners();
+renderHistory();
 });
 
-requestAnimationFrame(draw);
-```
+function loadSettings() {
+State.apiKey     = localStorage.getItem(‘cf_key’) || ‘’;
+State.model      = localStorage.getItem(‘cf_model’) || ‘claude-sonnet-4-5’;
+State.maxTokens  = parseInt(localStorage.getItem(‘cf_tokens’) || ‘8000’);
+State.temperature = parseFloat(localStorage.getItem(‘cf_temp’) || ‘0.3’);
+State.history    = JSON.parse(localStorage.getItem(‘cf_history’) || ‘[]’);
 
+// تطبيق الإعدادات على الواجهة
+const modelEl = document.getElementById(‘model-select’);
+const tokensEl = document.getElementById(‘max-tokens’);
+const tempEl = document.getElementById(‘temperature’);
+const tempVal = document.getElementById(‘temp-val’);
+if (modelEl) modelEl.value = State.model;
+if (tokensEl) tokensEl.value = State.maxTokens;
+if (tempEl) { tempEl.value = State.temperature; }
+if (tempVal) tempVal.textContent = State.temperature;
+
+// ربط أحداث الإعدادات
+if (modelEl) modelEl.addEventListener(‘change’, () => {
+State.model = modelEl.value;
+localStorage.setItem(‘cf_model’, State.model);
+});
+if (tokensEl) tokensEl.addEventListener(‘input’, () => {
+State.maxTokens = parseInt(tokensEl.value);
+localStorage.setItem(‘cf_tokens’, State.maxTokens);
+});
+if (tempEl) tempEl.addEventListener(‘input’, () => {
+State.temperature = parseFloat(tempEl.value);
+if (tempVal) tempVal.textContent = State.temperature.toFixed(1);
+localStorage.setItem(‘cf_temp’, State.temperature);
+});
 }
 
-window.addEventListener(‘resize’, resize);
-resize();
-requestAnimationFrame(draw);
-})();
-
-/* ═══════════════════════════════════════════
-SYSTEM PROMPT BUILDER
-═══════════════════════════════════════════ */
-function buildSystemPrompt(lang, size) {
-const sizeMap = {
-small:  ‘قصير ومختصر (200-400 سطر لكل ملف)’,
-medium: ‘متوسط ومفصّل (400-800 سطر لكل ملف)’,
-large:  ‘كامل ومفصّل جداً بدون اختصار (800-2000+ سطر لكل ملف)’,
-};
-
-return `أنت CodeForge AI، مهندس برمجيات خبير متخصص في توليد أكواد برمجية كاملة وعالية الجودة.
-
-## قواعد الإخراج الأساسية:
-
-1. **ولّد دائماً كوداً كاملاً** — لا تختصر أبداً، لا تكتب “… بقية الكود” أو “// TODO”.
-1. **حجم الكود المطلوب**: ${sizeMap[size] || sizeMap.medium}.
-1. **اللغة المفضّلة**: ${lang === ‘auto’ ? ‘اختر أنسب لغة تلقائياً’ : lang}.
-
-## صيغة الإخراج المطلوبة (مهم جداً — اتبعها حرفياً):
-
-أولاً: ابدأ بمقدمة قصيرة عن المشروع (2-3 جمل).
-
-ثانياً: لكل ملف، استخدم هذا الشكل بالضبط:
-
-```[LANG]:[FILENAME]
-[FULL CODE HERE]
-```
-
-أمثلة:
-```html:index.html
-…
-```
-```css:style.css
-…
-```
-```javascript:script.js
-…
-```
-```python:main.py
-…
-```
-
-ثالثاً: في نهاية ردّك، أضف قسم “📋 ملخص الملفات:” وأدرج قائمة بكل الملفات مع وصف مختصر.
-
-## معايير جودة الكود:
-
-- تعليقات واضحة بالعربية أو الإنجليزية
-- Clean Code & Best Practices
-- Responsive Design إذا كان الكود للواجهة
-- معالجة الأخطاء (Error Handling)
-- أمان الكود (لا SQL Injection، لا XSS، إلخ)
-- كل المتغيرات والدوال مسمّاة بشكل واضح
-
-## ملاحظات إضافية:
-
-- إذا المشروع كبير، قسّمه إلى ملفات متعددة منطقياً
-- اكتب Backend + Frontend إذا طُلب ذلك
-- أضف package.json أو requirements.txt عند الحاجة
-- لا تستخدم placeholder أو lorem ipsum في الكود النهائي`;
-  }
-
-/* ═══════════════════════════════════════════
-SYNTAX HIGHLIGHTER (client-side, regex)
-═══════════════════════════════════════════ */
-function highlight(code, lang) {
-// Escape HTML first
-let c = code
-.replace(/&/g, ‘&’)
-.replace(/</g, ‘<’)
-.replace(/>/g, ‘>’);
-
-if ([‘html’, ‘xml’].includes(lang)) {
-c = c
-.replace(/(</?)([\w-]+)/g, ‘$1<span class="t-tag">$2</span>’)
-.replace(/([\w-]+)(=)/g, ‘<span class="t-attr">$1</span>$2’)
-.replace(/(”.*?”)/g, ‘<span class="t-str">$1</span>’)
-.replace(/(//.*)/g, ‘<span class="t-cm">$1</span>’);
-} else if (lang === ‘css’ || lang === ‘scss’) {
-c = c
-.replace(/(/*[\s\S]*?*/)/g, ‘<span class="t-cm">$1</span>’)
-.replace(/([.#][\w-]+(?:\s*,\s*[.#][\w-]+)*)\s*{/g, ‘<span class="t-sel">$1</span> {’)
-.replace(/([\w-]+)\s*:/g, ‘<span class="t-attr">$1</span>:’)
-.replace(/:\s*([^;{}]+)/g, ‘: <span class="t-str">$1</span>’)
-.replace(/(\d+(?:.\d+)?(?:px|em|rem|%|vh|vw|s|ms))/g, ‘<span class="t-num">$1</span>’);
-} else if ([‘js’, ‘javascript’, ‘ts’, ‘typescript’].includes(lang)) {
-c = c
-.replace(/(//.*)/g, ‘<span class="t-cm">$1</span>’)
-.replace(/(/*[\s\S]*?*/)/g, ‘<span class="t-cm">$1</span>’)
-.replace(/\b(const|let|var|function|class|return|if|else|for|while|do|switch|case|break|continue|import|export|default|async|await|try|catch|finally|new|this|typeof|instanceof|of|in|from|extends|super|static|get|set|yield|void|delete|throw)\b/g, ‘<span class="t-kw">$1</span>’)
-.replace(/\b([A-Z][a-zA-Z0-9_]*)\b/g, ‘<span class="t-cls">$1</span>’)
-.replace(/\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(/g, ‘<span class="t-fn">$1</span>(’)
-.replace(/(”(?:[^”\]|\.)*”|’(?:[^’\]|\.)*’|`(?:[^`\]|\.)*`)/g, ‘<span class="t-str">$1</span>’)
-.replace(/\b(\d+(?:.\d+)?)\b/g, ‘<span class="t-num">$1</span>’);
-} else if ([‘python’, ‘py’].includes(lang)) {
-c = c
-.replace(/(#.*)/g, ‘<span class="t-cm">$1</span>’)
-.replace(/(”””[\s\S]*?”””|’’’[\s\S]*?’’’)/g, ‘<span class="t-cm">$1</span>’)
-.replace(/\b(def|class|return|if|elif|else|for|while|import|from|as|with|try|except|finally|raise|pass|break|continue|lambda|yield|global|nonlocal|and|or|not|in|is|True|False|None|async|await)\b/g, ‘<span class="t-kw">$1</span>’)
-.replace(/\b([A-Z][a-zA-Z0-9_]*)\b/g, ‘<span class="t-cls">$1</span>’)
-.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(/g, ‘<span class="t-fn">$1</span>(’)
-.replace(/(”(?:[^”\]|\.)*”|’(?:[^’\]|\.)*’)/g, ‘<span class="t-str">$1</span>’)
-.replace(/\b(\d+(?:.\d+)?)\b/g, ‘<span class="t-num">$1</span>’);
+function checkApiKey() {
+if (State.apiKey) {
+showApp();
 } else {
-// Generic — just strings and comments
-c = c
-.replace(/(//.*|#.*)/g, ‘<span class="t-cm">$1</span>’)
-.replace(/(”(?:[^”\]|\.)*”|’(?:[^’\]|\.)*’)/g, ‘<span class="t-str">$1</span>’)
-.replace(/\b(\d+(?:.\d+)?)\b/g, ‘<span class="t-num">$1</span>’);
-}
-
-return c;
-}
-
-/* ═══════════════════════════════════════════
-CODE BLOCK BUILDER
-═══════════════════════════════════════════ */
-function buildCodeBlock(lang, filename, rawCode) {
-const tpl    = document.getElementById(‘codeBlockTpl’).content.cloneNode(true);
-const block  = tpl.querySelector(’.code-block’);
-const badge  = tpl.querySelector(’.code-lang-badge’);
-const fnEl   = tpl.querySelector(’.code-filename’);
-const codeEl = tpl.querySelector(‘code’);
-const copyBtn= tpl.querySelector(’.copy-btn’);
-const dlBtn  = tpl.querySelector(’.dl-btn’);
-
-badge.textContent     = lang.toUpperCase();
-fnEl.textContent      = filename || ‘’;
-codeEl.innerHTML      = highlight(rawCode, lang);
-
-// Copy
-copyBtn.addEventListener(‘click’, () => {
-navigator.clipboard.writeText(rawCode).then(() => {
-copyBtn.textContent = ‘✅ تم النسخ’;
-copyBtn.classList.add(‘copied’);
-setTimeout(() => {
-copyBtn.textContent = ‘📋 نسخ’;
-copyBtn.classList.remove(‘copied’);
-}, 2000);
-});
-});
-
-// Download single file
-dlBtn.addEventListener(‘click’, () => {
-const blob = new Blob([rawCode], { type: ‘text/plain;charset=utf-8’ });
-const a    = document.createElement(‘a’);
-a.href     = URL.createObjectURL(blob);
-a.download = filename || `code.${lang}`;
-a.click();
-});
-
-return block;
-}
-
-/* ═══════════════════════════════════════════
-PARSE AI RESPONSE → files array
-═══════════════════════════════════════════ */
-function parseFiles(text) {
-const files = [];
-// Matches `lang:filename ... ` OR `lang ... `
-const re = /`([\w#+.\-]+)(?::([^\n]+))?\n([\s\S]*?)`/g;
-let m;
-while ((m = re.exec(text)) !== null) {
-const lang     = m[1].toLowerCase().replace(/^(html|css|js|javascript|python|py|ts|typescript|jsx|tsx|vue|php|java|cpp|c|cs|csharp|go|rust|dart|kotlin|swift|sql|yaml|json|xml|md|bash|sh|ruby|rb)$/i, ‘$1’);
-const filename = (m[2] || ‘’).trim() || guessFilename(lang, files.length);
-const code     = m[3];
-files.push({ lang, filename, code });
-}
-return files;
-}
-
-function guessFilename(lang, idx) {
-const map = {
-html: ‘index.html’, css: ‘style.css’,
-javascript: ‘script.js’, js: ‘script.js’,
-typescript: ‘app.ts’, ts: ‘app.ts’,
-python: ‘main.py’, py: ‘main.py’,
-java: ‘Main.java’, cpp: ‘main.cpp’,
-csharp: ‘Program.cs’, cs: ‘Program.cs’,
-dart: ‘main.dart’, vue: ‘App.vue’,
-php: ‘index.php’, go: ‘main.go’,
-rust: ‘main.rs’, ruby: ‘main.rb’,
-sql: ‘schema.sql’, json: ‘data.json’,
-yaml: ‘config.yaml’, bash: ‘run.sh’, sh: ‘run.sh’,
-};
-return map[lang] || `file_${idx + 1}.${lang}`;
-}
-
-/* ═══════════════════════════════════════════
-STRIP CODE BLOCKS → clean prose
-═══════════════════════════════════════════ */
-function stripCodeBlocks(text) {
-return text.replace(/`[\s\S]*?`/g, ‘’).trim();
-}
-
-/* ═══════════════════════════════════════════
-RENDER AI MESSAGE
-═══════════════════════════════════════════ */
-function renderAIMessage(text, isStreaming = false) {
-const files = parseFiles(text);
-const prose = stripCodeBlocks(text);
-
-const wrap   = document.createElement(‘div’);
-wrap.className = ‘msg-wrap ai’;
-
-// Avatar
-const av = document.createElement(‘div’);
-av.className  = ‘msg-avatar ai-av’;
-av.textContent = ‘⬡’;
-
-const body = document.createElement(‘div’);
-body.className = ‘msg-body’;
-
-// Project header if we have multiple files
-if (files.length > 1 || (files.length === 1 && !isStreaming)) {
-const ph = document.createElement(‘div’);
-ph.className = ‘project-header’;
-
-```
-const pt = document.createElement('div');
-pt.className = 'project-title';
-pt.innerHTML = `<span>📁</span> <span>${files.length} ملف${files.length > 1 ? 'ات' : ''} مولَّد${files.length > 1 ? 'ة' : ''}</span>`;
-
-const pa = document.createElement('div');
-pa.className = 'project-actions';
-
-const zipBtn = document.createElement('button');
-zipBtn.className   = 'btn-zip';
-zipBtn.textContent = '📦 تحميل ZIP';
-zipBtn.addEventListener('click', () => openZipModal(files));
-
-pa.appendChild(zipBtn);
-ph.appendChild(pt);
-ph.appendChild(pa);
-body.appendChild(ph);
-```
-
-}
-
-// Prose bubble
-if (prose) {
-const bubble = document.createElement(‘div’);
-bubble.className = ‘msg-bubble’;
-bubble.innerHTML = formatProse(prose, isStreaming);
-body.appendChild(bubble);
-}
-
-// Code blocks
-files.forEach((f, i) => {
-if (files.length > 1) {
-const div = document.createElement(‘div’);
-div.className = ‘part-divider’;
-div.innerHTML = `<span>📄 الجزء ${i + 1} — ${f.filename}</span>`;
-body.appendChild(div);
-}
-body.appendChild(buildCodeBlock(f.lang, f.filename, f.code));
-});
-
-wrap.appendChild(av);
-wrap.appendChild(body);
-return wrap;
-}
-
-function formatProse(text, isStreaming) {
-let t = text
-.replace(/**(.*?)**/g, ‘<strong>$1</strong>’)
-.replace(/*(.*?)*/g, ‘<em>$1</em>’)
-.replace(/`([^`]+)`/g, `<code style="background:var(--surface3);padding:1px 6px;border-radius:4px;font-family:var(--font-mono);font-size:13px">$1</code>`)
-.replace(/\n\n/g, ‘</p><p>’)
-.replace(/\n/g, ‘<br>’);
-t = ‘<p>’ + t + ‘</p>’;
-if (isStreaming) t += ‘<span class="stream-cursor"></span>’;
-return t;
-}
-
-/* ═══════════════════════════════════════════
-RENDER USER MESSAGE
-═══════════════════════════════════════════ */
-function renderUserMessage(text) {
-const wrap   = document.createElement(‘div’);
-wrap.className = ‘msg-wrap user’;
-
-const av = document.createElement(‘div’);
-av.className  = ‘msg-avatar user-av’;
-av.textContent = ‘👤’;
-
-const body   = document.createElement(‘div’);
-body.className = ‘msg-body’;
-
-const bubble = document.createElement(‘div’);
-bubble.className = ‘msg-bubble’;
-bubble.textContent = text;
-
-body.appendChild(bubble);
-wrap.appendChild(av);
-wrap.appendChild(body);
-return wrap;
-}
-
-/* ═══════════════════════════════════════════
-TYPING INDICATOR
-═══════════════════════════════════════════ */
-function renderTyping() {
-const wrap   = document.createElement(‘div’);
-wrap.className = ‘msg-wrap ai’;
-wrap.id        = ‘typingIndicator’;
-
-const av = document.createElement(‘div’);
-av.className  = ‘msg-avatar ai-av’;
-av.textContent = ‘⬡’;
-
-const body = document.createElement(‘div’);
-body.className = ‘msg-body’;
-
-const ind = document.createElement(‘div’);
-ind.className = ‘typing-indicator’;
-ind.innerHTML = ‘<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>’;
-
-body.appendChild(ind);
-wrap.appendChild(av);
-wrap.appendChild(body);
-return wrap;
-}
-
-/* ═══════════════════════════════════════════
-SCROLL TO BOTTOM
-═══════════════════════════════════════════ */
-function scrollBottom() {
-const c = els.chatContainer;
-c.scrollTop = c.scrollHeight;
-}
-
-/* ═══════════════════════════════════════════
-ACTIVE CONVERSATION HELPERS
-═══════════════════════════════════════════ */
-function getActiveConv() {
-return state.conversations.find(c => c.id === state.activeId);
-}
-
-function newConversation(firstMsg) {
-const id    = Date.now().toString();
-const title = firstMsg.slice(0, 42) + (firstMsg.length > 42 ? ‘…’ : ‘’);
-const conv  = { id, title, messages: [] };
-state.conversations.unshift(conv);
-state.activeId = id;
-renderHistoryList();
-return conv;
-}
-
-function renderHistoryList() {
-els.historyList.innerHTML = ‘’;
-state.conversations.forEach(conv => {
-const li = document.createElement(‘li’);
-li.className   = ‘history-item’ + (conv.id === state.activeId ? ’ active’ : ‘’);
-li.textContent = conv.title;
-li.addEventListener(‘click’, () => switchConversation(conv.id));
-els.historyList.appendChild(li);
-});
-}
-
-function switchConversation(id) {
-state.activeId = id;
-renderHistoryList();
-const conv = getActiveConv();
-els.topbarTitle.textContent = conv ? conv.title : ‘مساعد الكودنك الذكي’;
-els.messagesList.innerHTML = ‘’;
-els.welcomeScreen.style.display = ‘none’;
-if (conv) {
-conv.messages.forEach(m => {
-if (m.role === ‘user’) {
-els.messagesList.appendChild(renderUserMessage(m.content));
-} else {
-els.messagesList.appendChild(renderAIMessage(m.content));
-}
-});
-}
-scrollBottom();
-}
-
-/* ═══════════════════════════════════════════
-SEND MESSAGE & CALL API
-═══════════════════════════════════════════ */
-async function sendMessage() {
-const text = els.userInput.value.trim();
-if (!text || state.generating) return;
-
-const lang = els.langSelect.value;
-const size = els.sizeSelect.value;
-
-// Init conversation if needed
-let conv = getActiveConv();
-if (!conv) {
-conv = newConversation(text);
-els.welcomeScreen.style.display = ‘none’;
-}
-
-// Add user msg to state & UI
-conv.messages.push({ role: ‘user’, content: text });
-els.messagesList.appendChild(renderUserMessage(text));
-els.userInput.value = ‘’;
-autoResize(els.userInput);
-
-// Show typing
-const typing = renderTyping();
-els.messagesList.appendChild(typing);
-scrollBottom();
-
-// Disable input
-state.generating = true;
-els.sendBtn.disabled = true;
-els.sendIcon.innerHTML = ‘<span class="spinner"></span>’;
-
-try {
-// Build messages array (history)
-const messages = conv.messages.map(m => ({
-role: m.role,
-content: m.content,
-}));
-
-```
-const response = await fetch(API_URL, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    model: MODEL,
-    max_tokens: 8192,
-    system: buildSystemPrompt(lang, size),
-    messages,
-  }),
-});
-
-if (!response.ok) {
-  const err = await response.json().catch(() => ({}));
-  throw new Error(err.error?.message || `HTTP ${response.status}`);
-}
-
-const data = await response.json();
-const aiText = data.content
-  .filter(b => b.type === 'text')
-  .map(b => b.text)
-  .join('\n');
-
-// Remove typing, add AI msg
-typing.remove();
-conv.messages.push({ role: 'assistant', content: aiText });
-
-// Store files for ZIP
-state.pendingFiles = parseFiles(aiText);
-
-const aiEl = renderAIMessage(aiText);
-els.messagesList.appendChild(aiEl);
-scrollBottom();
-```
-
-} catch (err) {
-typing.remove();
-
-```
-// Show error message
-const errWrap   = document.createElement('div');
-errWrap.className = 'msg-wrap ai';
-
-const av = document.createElement('div');
-av.className  = 'msg-avatar ai-av';
-av.textContent = '⬡';
-
-const body   = document.createElement('div');
-body.className = 'msg-body';
-
-const bubble = document.createElement('div');
-bubble.className = 'msg-bubble';
-bubble.style.borderColor = 'var(--red)';
-bubble.style.color       = 'var(--red)';
-bubble.innerHTML = `
-  <strong>⚠️ حدث خطأ</strong><br>
-  ${escapeHtml(err.message)}<br><br>
-  <small style="color:var(--text3)">تأكد من صحة اتصالك ثم أعد المحاولة.</small>
-`;
-
-body.appendChild(bubble);
-errWrap.appendChild(av);
-errWrap.appendChild(body);
-els.messagesList.appendChild(errWrap);
-scrollBottom();
-```
-
-} finally {
-state.generating   = false;
-els.sendBtn.disabled = false;
-els.sendIcon.textContent = ‘➤’;
+document.getElementById(‘api-screen’).classList.remove(‘hidden’);
 }
 }
 
-function escapeHtml(str) {
-return String(str)
-.replace(/&/g,’&’).replace(/</g,’<’)
-.replace(/>/g,’>’).replace(/”/g,’"’);
-}
-
-/* ═══════════════════════════════════════════
-ZIP MODAL
-═══════════════════════════════════════════ */
-function openZipModal(files) {
-state.pendingFiles = files;
-els.zipModalDesc.textContent = `${files.length} ملف/ملفات جاهزة للتحميل`;
-els.zipFilesList.innerHTML   = ‘’;
-
-files.forEach(f => {
-const item = document.createElement(‘div’);
-item.className = ‘modal-file-item’;
-item.innerHTML = `<span>📄</span> ${escapeHtml(f.filename)} <span style="color:var(--text3);margin-right:auto">${f.lang.toUpperCase()}</span>`;
-els.zipFilesList.appendChild(item);
-});
-
-els.zipModal.removeAttribute(‘hidden’);
-}
-
-async function downloadZip() {
-const files = state.pendingFiles;
-if (!files.length) return;
-
-const zip = new JSZip();
-files.forEach(f => zip.file(f.filename, f.code));
-
-const blob = await zip.generateAsync({ type: ‘blob’ });
-const url  = URL.createObjectURL(blob);
-const a    = document.createElement(‘a’);
-a.href     = url;
-a.download = ‘codeforge-project.zip’;
-a.click();
-URL.revokeObjectURL(url);
-
-els.zipModal.setAttribute(‘hidden’, ‘’);
-}
-
-/* ═══════════════════════════════════════════
-TEXTAREA AUTO-RESIZE
-═══════════════════════════════════════════ */
-function autoResize(el) {
-el.style.height = ‘auto’;
-el.style.height = Math.min(el.scrollHeight, 180) + ‘px’;
-}
-
-/* ═══════════════════════════════════════════
-THEME
-═══════════════════════════════════════════ */
-function applyTheme(light) {
-document.body.classList.toggle(‘light’, light);
-document.body.classList.toggle(‘dark’,  !light);
-localStorage.setItem(‘codeforge-theme’, light ? ‘light’ : ‘dark’);
-}
-
-/* ═══════════════════════════════════════════
-EVENT LISTENERS
-═══════════════════════════════════════════ */
-
-// Send button
-els.sendBtn.addEventListener(‘click’, sendMessage);
-
-// Enter to send (Shift+Enter = new line)
-els.userInput.addEventListener(‘keydown’, e => {
-if (e.key === ‘Enter’ && !e.shiftKey) {
+function setupEventListeners() {
+// إرسال بـ Ctrl+Enter
+const textarea = document.getElementById(‘user-input’);
+if (textarea) {
+textarea.addEventListener(‘keydown’, (e) => {
+if ((e.ctrlKey || e.metaKey) && e.key === ‘Enter’) {
 e.preventDefault();
 sendMessage();
 }
 });
-
-// Auto-resize textarea
-els.userInput.addEventListener(‘input’, () => autoResize(els.userInput));
-
-// Suggestion cards
-document.querySelectorAll(’.suggest-card’).forEach(btn => {
-btn.addEventListener(‘click’, () => {
-els.userInput.value = btn.dataset.text;
-autoResize(els.userInput);
-els.userInput.focus();
+// Auto-resize
+textarea.addEventListener(‘input’, () => {
+textarea.style.height = ‘auto’;
+textarea.style.height = Math.min(textarea.scrollHeight, 200) + ‘px’;
 });
-});
+}
+}
 
-// New chat
-els.newChatBtn.addEventListener(‘click’, () => {
-state.activeId = null;
-els.messagesList.innerHTML = ‘’;
-els.welcomeScreen.style.display = ‘’;
-els.topbarTitle.textContent = ‘مساعد الكودنك الذكي’;
-renderHistoryList();
-});
+// ───────────────────────── API KEY ───────────────────────────────
+function saveApiKey() {
+const input = document.getElementById(‘api-key-input’);
+const key = input.value.trim();
+if (!key || !key.startsWith(‘sk-ant-’)) {
+showToast(‘⚠️ أدخل مفتاح API صحيح (يبدأ بـ sk-ant-)’);
+return;
+}
+State.apiKey = key;
+localStorage.setItem(‘cf_key’, key);
+showApp();
+}
 
-// Clear chat
-els.clearChatBtn.addEventListener(‘click’, () => {
-const conv = getActiveConv();
-if (conv) {
-conv.messages = [];
-els.messagesList.innerHTML = ‘’;
-els.welcomeScreen.style.display = ‘’;
+function clearApiKey() {
+localStorage.removeItem(‘cf_key’);
+State.apiKey = ‘’;
+document.getElementById(‘app’).classList.add(‘hidden’);
+document.getElementById(‘api-screen’).classList.remove(‘hidden’);
+document.getElementById(‘api-key-input’).value = ‘’;
+}
+
+function toggleKeyVisibility() {
+const input = document.getElementById(‘api-key-input’);
+input.type = input.type === ‘password’ ? ‘text’ : ‘password’;
+}
+
+function showApp() {
+document.getElementById(‘api-screen’).classList.add(‘hidden’);
+document.getElementById(‘app’).classList.remove(‘hidden’);
+}
+
+// ───────────────────────── TABS ──────────────────────────────────
+function switchTab(name) {
+document.querySelectorAll(’.tab-section’).forEach(s => s.classList.add(‘hidden’));
+document.querySelectorAll(’.nav-item’).forEach(b => b.classList.remove(‘active’));
+document.getElementById(`tab-${name}`).classList.remove(‘hidden’);
+document.querySelectorAll(’.nav-item’).forEach(b => {
+if (b.textContent.includes(name === ‘chat’ ? ‘المحادثة’ : name === ‘history’ ? ‘المشاريع’ : ‘الإعدادات’)) {
+b.classList.add(‘active’);
 }
 });
+if (name === ‘history’) renderHistory();
+}
 
-// Sidebar toggle
-els.toggleSidebar.addEventListener(‘click’, () => {
-els.sidebar.classList.toggle(‘collapsed’);
+// ───────────────────────── EXAMPLES ──────────────────────────────
+function fillExample(btn) {
+const textarea = document.getElementById(‘user-input’);
+textarea.value = btn.textContent;
+textarea.focus();
+}
+
+// ───────────────────────── SEND MESSAGE ──────────────────────────
+async function sendMessage() {
+if (State.isLoading) return;
+const textarea = document.getElementById(‘user-input’);
+const userText = textarea.value.trim();
+if (!userText) return;
+
+textarea.value = ‘’;
+textarea.style.height = ‘auto’;
+
+// إزالة رسالة الترحيب
+const welcome = document.querySelector(’.welcome-msg’);
+if (welcome) welcome.remove();
+
+// عرض رسالة المستخدم
+appendUserMessage(userText);
+
+// بدء التحميل
+setState(true);
+const typingEl = appendTyping();
+
+try {
+const prompt = buildPrompt(userText);
+const response = await callAnthropicAPI(prompt);
+typingEl.remove();
+processResponse(response, userText);
+} catch (err) {
+typingEl.remove();
+appendErrorMessage(err.message);
+showToast(’❌ خطأ في الاتصال: ’ + err.message);
+} finally {
+setState(false);
+}
+}
+
+// ───────────────────────── PROMPT BUILDER ────────────────────────
+function buildPrompt(userRequest) {
+const wantComments  = document.getElementById(‘opt-comments’)?.checked;
+const wantReadme    = document.getElementById(‘opt-readme’)?.checked;
+const wantStructure = document.getElementById(‘opt-structure’)?.checked;
+const lang          = document.getElementById(‘lang-select’)?.value || ‘auto’;
+
+const langHint = lang !== ‘auto’ ? `\n- استخدم لغة/إطار عمل: ${lang}` : ‘’;
+const commentsHint = wantComments ? ‘- أضف تعليقات توضيحية داخل الكود’ : ‘- لا تضف تعليقات’;
+const readmeHint = wantReadme ? ‘- أضف ملف README.md في النهاية’ : ‘’;
+const structureHint = wantStructure ? ‘- اعرض هيكل مجلدات المشروع أولاً’ : ‘’;
+
+return `أنت مهندس برمجيات خبير جدًا ومتمكن من جميع لغات البرمجة والأطر والتقنيات الحديثة.
+
+مهمتك: توليد كود برمجي كامل واحترافي للمشروع التالي.
+
+طلب المستخدم:
+“””
+${userRequest}
+“””
+
+قواعد الإخراج:
+${langHint}
+${commentsHint}
+${readmeHint}
+${structureHint}
+
+- اكتب كودًا نظيفًا قابلاً للصيانة (Clean Code)
+- إذا كان المشروع كبيراً، قسّمه إلى أجزاء (Part 1، Part 2…) مع توضيح محتوى كل جزء
+- ابدأ كل ملف بـ: ```[امتداد_الملف:اسم_الملف]```
+- أنهِ كل ملف بـ: ```
+- لا تختصر الكود أبداً — اكتبه كاملاً
+- بعد الانتهاء، اكتب ملخصاً قصيراً في قسم: ## ملخص المشروع
+
+ابدأ الآن:`;
+}
+
+// ───────────────────────── API CALL ──────────────────────────────
+async function callAnthropicAPI(prompt) {
+const res = await fetch(‘https://api.anthropic.com/v1/messages’, {
+method: ‘POST’,
+headers: {
+‘Content-Type’: ‘application/json’,
+‘x-api-key’: State.apiKey,
+‘anthropic-version’: ‘2023-06-01’,
+‘anthropic-dangerous-direct-browser-access’: ‘true’,
+},
+body: JSON.stringify({
+model: State.model,
+max_tokens: State.maxTokens,
+temperature: State.temperature,
+messages: [{ role: ‘user’, content: prompt }],
+}),
 });
-els.openSidebar.addEventListener(‘click’, () => {
-els.sidebar.classList.remove(‘collapsed’);
+
+if (!res.ok) {
+const errData = await res.json().catch(() => ({}));
+const msg = errData?.error?.message || `HTTP ${res.status}`;
+throw new Error(msg);
+}
+
+const data = await res.json();
+return data.content?.[0]?.text || ‘’;
+}
+
+// ───────────────────────── RESPONSE PROCESSOR ────────────────────
+function processResponse(rawText, userRequest) {
+const files = parseFiles(rawText);
+State.currentFiles = files;
+
+// حفظ في التاريخ
+saveToHistory(userRequest, files, rawText);
+
+// بناء رسالة المساعد
+const container = createAssistantMessage();
+const bubble = container.querySelector(’.msg-bubble’);
+
+// ملخص المشروع
+const summary = extractSection(rawText, ‘## ملخص المشروع’);
+if (summary) {
+const summaryEl = document.createElement(‘div’);
+summaryEl.className = ‘project-summary’;
+summaryEl.innerHTML = `<h4>📋 ملخص المشروع</h4><p>${escapeHtml(summary)}</p>`;
+bubble.appendChild(summaryEl);
+}
+
+if (files.length > 0) {
+// شبكة الملفات
+const filesLabel = document.createElement(‘div’);
+filesLabel.style.cssText = ‘font-size:12px;color:var(–text2);margin-bottom:8px;font-weight:600;’;
+filesLabel.textContent = `📁 ${files.length} ملف تم توليده:`;
+bubble.appendChild(filesLabel);
+
+```
+const grid = document.createElement('div');
+grid.className = 'files-grid';
+files.forEach((file, idx) => {
+  const chip = document.createElement('button');
+  chip.className = 'file-chip';
+  chip.innerHTML = `<span class="file-icon">${getFileIcon(file.name)}</span>${escapeHtml(file.name)}`;
+  chip.onclick = () => openFileModal(file);
+  grid.appendChild(chip);
+});
+bubble.appendChild(grid);
+
+// عرض أول ملفين مباشرة
+files.slice(0, 2).forEach(file => {
+  bubble.appendChild(createCodeBlock(file.name, file.lang, file.code));
 });
 
-// Theme toggle
-els.themeToggle.addEventListener(‘change’, e => applyTheme(e.target.checked));
+if (files.length > 2) {
+  const moreNote = document.createElement('div');
+  moreNote.style.cssText = 'font-size:12px;color:var(--text3);margin:8px 0;';
+  moreNote.textContent = `+ ${files.length - 2} ملفات إضافية — انقر على أي ملف لعرضه`;
+  bubble.appendChild(moreNote);
+}
+```
 
-// ZIP modal
-els.zipDownloadBtn.addEventListener(‘click’, downloadZip);
-els.zipCancelBtn.addEventListener(‘click’, () => els.zipModal.setAttribute(‘hidden’,’’));
-els.zipModal.addEventListener(‘click’, e => {
-if (e.target === els.zipModal) els.zipModal.setAttribute(‘hidden’,’’);
+} else {
+// لا ملفات محددة، عرض الرد كـ نص + كود
+bubble.appendChild(createCodeBlock(‘output’, detectLang(’’), rawText));
+}
+
+// أزرار الإجراءات
+const actions = document.createElement(‘div’);
+actions.className = ‘action-bar’;
+
+const downloadBtn = document.createElement(‘button’);
+downloadBtn.className = ‘btn-accent-sm’;
+downloadBtn.textContent = ‘💾 تحميل المشروع كامل’;
+downloadBtn.onclick = () => downloadProject(files, userRequest);
+actions.appendChild(downloadBtn);
+
+const copyAllBtn = document.createElement(‘button’);
+copyAllBtn.className = ‘btn-sm’;
+copyAllBtn.textContent = ‘📋 نسخ الكل’;
+copyAllBtn.onclick = () => { copyToClipboard(rawText); showToast(‘✅ تم نسخ كامل الكود’); };
+actions.appendChild(copyAllBtn);
+
+if (files.length > 2) {
+const allFilesBtn = document.createElement(‘button’);
+allFilesBtn.className = ‘btn-sm’;
+allFilesBtn.textContent = ‘📂 عرض جميع الملفات’;
+allFilesBtn.onclick = () => openAllFilesModal(files);
+actions.appendChild(allFilesBtn);
+}
+
+bubble.appendChild(actions);
+scrollToBottom();
+}
+
+// ───────────────────────── FILE PARSER ───────────────────────────
+function parseFiles(text) {
+const files = [];
+// نمط: `[ext:filename] ... `
+const pattern = /`([a-zA-Z0-9+#]*):?([^\n`]*)\n([\s\S]*?)`/g;
+let match;
+
+while ((match = pattern.exec(text)) !== null) {
+const lang = match[1].trim() || ‘text’;
+const name = match[2].trim() || `file_${files.length + 1}.${lang}`;
+const code = match[3];
+if (code.trim()) {
+files.push({ lang, name: name || `${lang}_${files.length + 1}`, code });
+}
+}
+
+// إذا لم يُوجد نمط خاص، ابحث عن كتل الكود العادية
+if (files.length === 0) {
+const simplePattern = /`([a-zA-Z0-9+#]*)\n([\s\S]*?)`/g;
+let i = 0;
+while ((match = simplePattern.exec(text)) !== null) {
+const lang = match[1].trim() || ‘text’;
+const code = match[2];
+if (code.trim()) {
+files.push({ lang, name: generateFileName(lang, i), code });
+i++;
+}
+}
+}
+
+return files;
+}
+
+function generateFileName(lang, idx) {
+const map = {
+html: `index${idx ? idx : ''}.html`,
+css: `style${idx ? idx : ''}.css`,
+js: `script${idx ? idx : ''}.js`,
+javascript: `script${idx ? idx : ''}.js`,
+python: `main${idx ? idx : ''}.py`,
+php: `index${idx ? idx : ''}.php`,
+typescript: `app${idx ? idx : ''}.ts`,
+json: `config${idx ? idx : ''}.json`,
+sql: `database${idx ? idx : ''}.sql`,
+bash: `run${idx ? idx : ''}.sh`,
+dart: `main${idx ? idx : ''}.dart`,
+md: `README${idx ? idx : ''}.md`,
+};
+return map[lang.toLowerCase()] || `file${idx}.${lang}`;
+}
+
+function detectLang(name) {
+const ext = name.split(’.’).pop().toLowerCase();
+const map = { html: ‘html’, css: ‘css’, js: ‘javascript’, ts: ‘typescript’, py: ‘python’, php: ‘php’, json: ‘json’, sql: ‘sql’, md: ‘markdown’ };
+return map[ext] || ‘text’;
+}
+
+function getFileIcon(name) {
+const ext = name.split(’.’).pop().toLowerCase();
+const icons = { html: ‘🌐’, css: ‘🎨’, js: ‘⚡’, ts: ‘💙’, py: ‘🐍’, php: ‘🐘’, json: ‘📋’, sql: ‘🗄️’, md: ‘📝’, sh: ‘🖥️’, dart: ‘🎯’ };
+return icons[ext] || ‘📄’;
+}
+
+function extractSection(text, header) {
+const idx = text.indexOf(header);
+if (idx === -1) return ‘’;
+const after = text.slice(idx + header.length).trim();
+const end = after.search(/\n##\s/);
+return (end === -1 ? after : after.slice(0, end)).replace(/`[\s\S]*?`/g, ‘’).trim();
+}
+
+// ───────────────────────── DOM BUILDERS ──────────────────────────
+function appendUserMessage(text) {
+const area = document.getElementById(‘messages-area’);
+const div = document.createElement(‘div’);
+div.className = ‘msg msg-user’;
+div.innerHTML = `<div class="msg-label user-label">أنت</div> <div class="msg-bubble">${escapeHtml(text)}</div>`;
+area.appendChild(div);
+scrollToBottom();
+}
+
+function createAssistantMessage() {
+const area = document.getElementById(‘messages-area’);
+const div = document.createElement(‘div’);
+div.className = ‘msg msg-assistant’;
+div.innerHTML = `<div class="msg-label">CodeForge AI ⚡</div> <div class="msg-bubble"></div>`;
+area.appendChild(div);
+scrollToBottom();
+return div;
+}
+
+function appendTyping() {
+const area = document.getElementById(‘messages-area’);
+const div = document.createElement(‘div’);
+div.className = ‘msg msg-assistant’;
+div.innerHTML = `<div class="msg-label">CodeForge AI ⚡</div> <div class="typing-indicator"> <div class="typing-dot"></div> <div class="typing-dot"></div> <div class="typing-dot"></div> </div> <div class="stream-progress"><div class="stream-progress-bar"></div></div>`;
+area.appendChild(div);
+scrollToBottom();
+return div;
+}
+
+function appendErrorMessage(msg) {
+const area = document.getElementById(‘messages-area’);
+const div = document.createElement(‘div’);
+div.className = ‘msg msg-assistant’;
+div.innerHTML = `<div class="msg-label">CodeForge AI ⚡</div> <div class="msg-bubble" style="border-color:rgba(255,107,107,0.3);background:rgba(255,107,107,0.06);"> ❌ حدث خطأ: ${escapeHtml(msg)}<br><br> <small style="color:var(--text3)">تحقق من مفتاح API أو حاول مجدداً</small> </div>`;
+area.appendChild(div);
+scrollToBottom();
+}
+
+function createCodeBlock(filename, lang, code) {
+const block = document.createElement(‘div’);
+block.className = ‘code-block’;
+
+const lines = code.split(’\n’).length;
+block.innerHTML = `<div class="code-block-header"> <span class="code-block-lang">${getFileIcon(filename)} ${escapeHtml(filename)} · ${lines} سطر</span> <div class="code-block-actions"> <button class="btn-xs" onclick="copyToClipboard(this.closest('.code-block').querySelector('code').textContent); showToast('✅ تم النسخ')">📋 نسخ</button> <button class="btn-xs" onclick="downloadFile('${escapeHtml(filename)}', this.closest('.code-block').querySelector('code').textContent)">💾 تحميل</button> <button class="btn-xs" onclick="openCodeModal('${escapeHtml(filename)}', this.closest('.code-block').querySelector('code').textContent)">🔍 توسيع</button> </div> </div> <pre><code>${escapeHtml(code.trim())}</code></pre>`;
+return block;
+}
+
+// ───────────────────────── MODAL ─────────────────────────────────
+let _modalDownloadName = ‘’;
+let _modalCode = ‘’;
+
+function openFileModal(file) {
+_modalDownloadName = file.name;
+_modalCode = file.code;
+document.getElementById(‘modal-title’).textContent = `${getFileIcon(file.name)} ${file.name}`;
+document.getElementById(‘modal-code’).textContent = file.code;
+document.getElementById(‘code-modal’).classList.remove(‘hidden’);
+}
+
+function openCodeModal(name, code) {
+_modalDownloadName = name;
+_modalCode = code;
+document.getElementById(‘modal-title’).textContent = `${getFileIcon(name)} ${name}`;
+document.getElementById(‘modal-code’).textContent = code;
+document.getElementById(‘code-modal’).classList.remove(‘hidden’);
+}
+
+function openAllFilesModal(files) {
+const combined = files.map(f => `// ===== ${f.name} =====\n${f.code}`).join(’\n\n’);
+_modalDownloadName = ‘all_files.txt’;
+_modalCode = combined;
+document.getElementById(‘modal-title’).textContent = `📁 جميع الملفات (${files.length})`;
+document.getElementById(‘modal-code’).textContent = combined;
+document.getElementById(‘code-modal’).classList.remove(‘hidden’);
+}
+
+function closeModal() {
+document.getElementById(‘code-modal’).classList.add(‘hidden’);
+}
+
+function copyModalCode() {
+copyToClipboard(_modalCode);
+showToast(‘✅ تم النسخ’);
+}
+
+function downloadModalCode() {
+downloadFile(_modalDownloadName, _modalCode);
+}
+
+// ───────────────────────── DOWNLOAD ──────────────────────────────
+function downloadFile(name, content) {
+const blob = new Blob([content], { type: ‘text/plain;charset=utf-8’ });
+const a = document.createElement(‘a’);
+a.href = URL.createObjectURL(blob);
+a.download = name;
+a.click();
+URL.revokeObjectURL(a.href);
+showToast(`💾 تم تحميل ${name}`);
+}
+
+async function downloadProject(files, projectName) {
+if (!files || files.length === 0) {
+showToast(‘⚠️ لا توجد ملفات للتحميل’);
+return;
+}
+
+// نحاول استخدام JSZip إذا كانت متاحة، وإلا نحمّل كملف واحد
+try {
+// محاولة تحميل JSZip ديناميكياً
+if (typeof JSZip === ‘undefined’) {
+await loadScript(‘https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js’);
+}
+
+```
+const zip = new JSZip();
+const folderName = sanitizeFilename(projectName).slice(0, 30) || 'project';
+const folder = zip.folder(folderName);
+
+files.forEach(file => {
+  folder.file(file.name, file.code);
 });
 
-/* ═══════════════════════════════════════════
-INIT
-═══════════════════════════════════════════ */
-(function init() {
-// Restore theme
-const saved = localStorage.getItem(‘codeforge-theme’);
-const light = saved === ‘light’;
-els.themeToggle.checked = light;
-applyTheme(light);
+// README إن لم يوجد
+if (!files.find(f => f.name.toLowerCase().includes('readme'))) {
+  folder.file('README.md', `# ${projectName}\n\nتم توليد هذا المشروع بواسطة CodeForge AI\n\n## الملفات\n\n${files.map(f => `- \`${f.name}\``).join('\n')}\n`);
+}
 
-// Focus input
-els.userInput.focus();
-})();
+const blob = await zip.generateAsync({ type: 'blob' });
+const a = document.createElement('a');
+a.href = URL.createObjectURL(blob);
+a.download = `${folderName}.zip`;
+a.click();
+URL.revokeObjectURL(a.href);
+showToast('✅ تم تحميل المشروع كـ ZIP');
+```
+
+} catch (err) {
+// Fallback: تحميل الملفات واحداً واحداً
+showToast(‘⬇️ جاري تحميل الملفات…’);
+for (const file of files) {
+await delay(200);
+downloadFile(file.name, file.code);
+}
+}
+}
+
+function loadScript(src) {
+return new Promise((resolve, reject) => {
+const s = document.createElement(‘script’);
+s.src = src;
+s.onload = resolve;
+s.onerror = reject;
+document.head.appendChild(s);
+});
+}
+
+// ───────────────────────── HISTORY ───────────────────────────────
+function saveToHistory(request, files, rawText) {
+const item = {
+id: Date.now(),
+title: request.slice(0, 60),
+date: new Date().toLocaleDateString(‘ar-IQ’),
+filesCount: files.length,
+files,
+raw: rawText,
+};
+State.history.unshift(item);
+if (State.history.length > 50) State.history.pop();
+localStorage.setItem(‘cf_history’, JSON.stringify(State.history));
+}
+
+function renderHistory() {
+const list = document.getElementById(‘history-list’);
+if (!list) return;
+list.innerHTML = ‘’;
+
+if (State.history.length === 0) {
+list.innerHTML = ‘<div class="empty-state">لا توجد مشاريع محفوظة بعد</div>’;
+return;
+}
+
+State.history.forEach(item => {
+const div = document.createElement(‘div’);
+div.className = ‘history-item’;
+div.innerHTML = `<div class="history-item-title">${escapeHtml(item.title)}</div> <div class="history-item-meta">📅 ${item.date} · 📁 ${item.filesCount} ملف</div>`;
+div.onclick = () => {
+switchTab(‘chat’);
+State.currentFiles = item.files;
+showToast(‘✅ تم استعادة المشروع’);
+setTimeout(() => {
+const area = document.getElementById(‘messages-area’);
+const welcome = area.querySelector(’.welcome-msg’);
+if (welcome) welcome.remove();
+processResponse(item.raw, item.title);
+}, 100);
+};
+list.appendChild(div);
+});
+}
+
+function clearHistory() {
+if (!confirm(‘هل أنت متأكد من مسح جميع المشاريع؟’)) return;
+State.history = [];
+localStorage.removeItem(‘cf_history’);
+renderHistory();
+showToast(‘🗑 تم مسح التاريخ’);
+}
+
+// ───────────────────────── UTILITIES ─────────────────────────────
+function setState(loading) {
+State.isLoading = loading;
+const btn = document.getElementById(‘send-btn’);
+const icon = document.getElementById(‘send-icon’);
+const textarea = document.getElementById(‘user-input’);
+if (btn) {
+btn.disabled = loading;
+btn.classList.toggle(‘loading’, loading);
+}
+if (icon) icon.textContent = loading ? ‘⏳’ : ‘⚡’;
+if (textarea) textarea.disabled = loading;
+}
+
+function scrollToBottom() {
+const area = document.getElementById(‘messages-area’);
+if (area) setTimeout(() => { area.scrollTop = area.scrollHeight; }, 50);
+}
+
+function copyToClipboard(text) {
+navigator.clipboard.writeText(text).catch(() => {
+// Fallback
+const ta = document.createElement(‘textarea’);
+ta.value = text;
+ta.style.position = ‘fixed’;
+ta.style.opacity = ‘0’;
+document.body.appendChild(ta);
+ta.select();
+document.execCommand(‘copy’);
+document.body.removeChild(ta);
+});
+}
+
+function escapeHtml(str) {
+return String(str)
+.replace(/&/g, ‘&’)
+.replace(/</g, ‘<’)
+.replace(/>/g, ‘>’)
+.replace(/”/g, ‘"’)
+.replace(/’/g, ‘'’);
+}
+
+function sanitizeFilename(str) {
+return str.replace(/[^a-zA-Z0-9\u0600-\u06FF *-]/g, ’*’).replace(/\s+/g, ‘_’);
+}
+
+function delay(ms) {
+return new Promise(r => setTimeout(r, ms));
+}
+
+let _toastTimer = null;
+function showToast(msg) {
+const toast = document.getElementById(‘toast’);
+toast.textContent = msg;
+toast.classList.remove(‘hidden’);
+clearTimeout(_toastTimer);
+_toastTimer = setTimeout(() => toast.classList.add(‘hidden’), 3000);
+}
+
+// ───────────────────────── KEYBOARD SHORTCUTS ────────────────────
+document.addEventListener(‘keydown’, (e) => {
+// Escape: close modal
+if (e.key === ‘Escape’) closeModal();
+// ?: show shortcuts hint
+if (e.key === ‘?’ && !e.target.closest(‘input, textarea’)) {
+showToast(‘⌨️ Ctrl+Enter: إرسال | Esc: إغلاق’);
+}
+});
