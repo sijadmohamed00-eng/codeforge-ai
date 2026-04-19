@@ -6,8 +6,10 @@ CodeForge AI — script.js
 ‘use strict’;
 
 // ───────────────────────────── STATE ─────────────────────────────
+const HARDCODED_KEY = ‘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’;
+
 const State = {
-apiKey: ‘’,
+apiKey: HARDCODED_KEY,
 model: ‘claude-sonnet-4-5’,
 maxTokens: 8000,
 temperature: 0.3,
@@ -25,7 +27,7 @@ renderHistory();
 });
 
 function loadSettings() {
-State.apiKey     = localStorage.getItem(‘cf_key’) || ‘’;
+State.apiKey     = HARDCODED_KEY;
 State.model      = localStorage.getItem(‘cf_model’) || ‘claude-sonnet-4-5’;
 State.maxTokens  = parseInt(localStorage.getItem(‘cf_tokens’) || ‘8000’);
 State.temperature = parseFloat(localStorage.getItem(‘cf_temp’) || ‘0.3’);
@@ -58,11 +60,8 @@ localStorage.setItem(‘cf_temp’, State.temperature);
 }
 
 function checkApiKey() {
-if (State.apiKey) {
+// المفتاح مضمّن — نفتح التطبيق مباشرة
 showApp();
-} else {
-document.getElementById(‘api-screen’).classList.remove(‘hidden’);
-}
 }
 
 function setupEventListeners() {
