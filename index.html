@@ -4,153 +4,133 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CodeForge AI — مولّد الأكواد الذكي</title>
+  <title>CodeForge AI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="dark">
 
-  <!-- ─── Animated background ─── -->
-
 <canvas id="bgCanvas"></canvas>
 
-  <!-- ─── App Shell ─── -->
+  <!-- API KEY SCREEN -->
 
-  <div class="app">
+  <div class="apikey-screen" id="apikeyScreen">
+    <div class="apikey-card">
+      <div class="apikey-logo">⬡</div>
+      <h1>CodeForge <em>AI</em></h1>
+      <p>أدخل مفتاح Anthropic API الخاص بك للبدء</p>
+      <div class="apikey-input-wrap">
+        <input type="password" id="apikeyInput" placeholder="sk-ant-api03-..." autocomplete="off" spellcheck="false" />
+        <button class="apikey-toggle" id="apikeyToggle" type="button">👁</button>
+      </div>
+      <label class="apikey-remember">
+        <input type="checkbox" id="apikeyRemember" checked />
+        <span>احفظ المفتاح في المتصفح</span>
+      </label>
+      <button class="apikey-btn" id="apikeyBtn">ابدأ ←</button>
+      <a class="apikey-link" href="https://console.anthropic.com/keys" target="_blank">احصل على مفتاح API مجاني →</a>
+      <div class="apikey-note">🔒 المفتاح يُحفظ في متصفحك فقط</div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+
+  <div class="app" id="appShell" style="display:none">
 
 ```
-<!-- SIDEBAR -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="brand">
       <span class="brand-icon">⬡</span>
       <span class="brand-name">CodeForge <em>AI</em></span>
     </div>
-    <button class="icon-btn" id="toggleSidebar" title="أغلق الشريط">‹</button>
+    <button class="icon-btn" id="toggleSidebar">‹</button>
   </div>
-
-  <button class="new-chat-btn" id="newChatBtn">
-    <span>+</span> محادثة جديدة
-  </button>
-
+  <button class="new-chat-btn" id="newChatBtn"><span>+</span> محادثة جديدة</button>
   <div class="sidebar-section-label">المحادثات</div>
   <ul class="history-list" id="historyList"></ul>
-
   <div class="sidebar-footer">
-    <label class="theme-toggle" title="تبديل الوضع">
+    <label class="theme-toggle">
       <input type="checkbox" id="themeToggle" />
-      <span class="toggle-track">
-        <span class="toggle-thumb"></span>
-        <span class="toggle-icons"><span>☀</span><span>☾</span></span>
-      </span>
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
       <span>الوضع الفاتح</span>
     </label>
-    <div class="version-tag">v2.0 · Claude Sonnet 4</div>
+    <button class="change-key-btn" id="changeKeyBtn">🔑 تغيير API Key</button>
+    <div class="version-tag">v2.1 · claude-sonnet-4-6</div>
   </div>
 </aside>
 
-<!-- MAIN -->
-<main class="main" id="main">
-
-  <!-- Top bar -->
+<main class="main">
   <header class="topbar">
-    <button class="icon-btn" id="openSidebar" title="القائمة">☰</button>
+    <button class="icon-btn" id="openSidebar">☰</button>
     <div class="topbar-title" id="topbarTitle">مساعد الكودنك الذكي</div>
-    <div class="topbar-actions">
-      <button class="icon-btn" id="clearChatBtn" title="مسح المحادثة">🗑</button>
-    </div>
+    <button class="icon-btn" id="clearChatBtn">🗑</button>
   </header>
 
-  <!-- Chat messages -->
   <div class="chat-container" id="chatContainer">
-
-    <!-- Welcome screen -->
     <div class="welcome-screen" id="welcomeScreen">
       <div class="welcome-logo">⬡</div>
       <h2>CodeForge AI</h2>
-      <p>مولّد الأكواد المتكاملة بالذكاء الاصطناعي<br/>أطلب أي مشروع وسيُنشأ لك كاملاً</p>
+      <p>مولّد الأكواد المتكاملة · اطلب أي مشروع وسيُنشأ كاملاً</p>
       <div class="suggestions-grid">
-        <button class="suggest-card" data-text="ابني لي موقع متجر إلكتروني كامل بـ HTML CSS JS مع سلة التسوق">
-          <span class="sug-icon">🛒</span>
-          <strong>متجر إلكتروني</strong>
-          <span>HTML + CSS + JS كامل</span>
+        <button class="suggest-card" data-text="ابني لي موقع متجر إلكتروني كامل بـ HTML CSS JS مع سلة التسوق وصفحة المنتجات">
+          <span class="sug-icon">🛒</span><strong>متجر إلكتروني</strong><span>HTML + CSS + JS</span>
         </button>
-        <button class="suggest-card" data-text="اكتب لي REST API بـ Node.js و Express مع قاعدة بيانات MongoDB لإدارة المستخدمين">
-          <span class="sug-icon">⚙️</span>
-          <strong>REST API كامل</strong>
-          <span>Node.js + Express + MongoDB</span>
+        <button class="suggest-card" data-text="اكتب REST API كامل بـ Node.js و Express مع MongoDB لإدارة المستخدمين و JWT">
+          <span class="sug-icon">⚙️</span><strong>REST API</strong><span>Node.js + Express</span>
         </button>
-        <button class="suggest-card" data-text="ابني داشبورد إدارة بـ React مع Charts وجداول بيانات">
-          <span class="sug-icon">📊</span>
-          <strong>لوحة تحكم React</strong>
-          <span>Dashboard + Charts</span>
+        <button class="suggest-card" data-text="ابني داشبورد إدارة كامل بـ React مع Recharts وجداول بيانات وتصميم احترافي">
+          <span class="sug-icon">📊</span><strong>Dashboard React</strong><span>Charts + Tables</span>
         </button>
-        <button class="suggest-card" data-text="اكتب لي تطبيق Flutter كامل لتطبيق مهام (Todo App) مع قاعدة بيانات محلية">
-          <span class="sug-icon">📱</span>
-          <strong>تطبيق Flutter</strong>
-          <span>Todo App + SQLite</span>
+        <button class="suggest-card" data-text="اكتب تطبيق Flutter كامل لإدارة المهام مع قاعدة بيانات SQLite محلية">
+          <span class="sug-icon">📱</span><strong>Flutter App</strong><span>Todo + SQLite</span>
         </button>
-        <button class="suggest-card" data-text="ابني لي موقع شركة احترافي بـ HTML CSS مع animations وتصميم حديث">
-          <span class="sug-icon">🏢</span>
-          <strong>موقع شركة</strong>
-          <span>HTML + CSS مع Animations</span>
+        <button class="suggest-card" data-text="ابني موقع شركة احترافي بـ HTML CSS مع Animations وتصميم حديث Responsive">
+          <span class="sug-icon">🏢</span><strong>موقع شركة</strong><span>HTML + CSS</span>
         </button>
-        <button class="suggest-card" data-text="اكتب لي Python script لتحليل بيانات CSV وعرض الإحصائيات">
-          <span class="sug-icon">🐍</span>
-          <strong>Python Data Analysis</strong>
-          <span>CSV + Pandas + Matplotlib</span>
+        <button class="suggest-card" data-text="اكتب Python script كامل لتحليل بيانات CSV مع Pandas وعرض إحصائيات Matplotlib">
+          <span class="sug-icon">🐍</span><strong>Python Analysis</strong><span>Pandas + Charts</span>
         </button>
       </div>
     </div>
-
-    <!-- Messages will be injected here -->
     <div class="messages-list" id="messagesList"></div>
   </div>
 
-  <!-- Input bar -->
   <div class="input-bar-wrap">
     <div class="input-bar">
       <div class="input-options">
-        <select id="langSelect" class="lang-select" title="لغة البرمجة">
+        <select id="langSelect" class="lang-select">
           <option value="auto">🔮 تلقائي</option>
           <option value="html">HTML/CSS/JS</option>
           <option value="react">React</option>
           <option value="vue">Vue.js</option>
           <option value="python">Python</option>
           <option value="node">Node.js</option>
-          <option value="flutter">Flutter/Dart</option>
+          <option value="flutter">Flutter</option>
           <option value="php">PHP</option>
-          <option value="csharp">C#</option>
           <option value="java">Java</option>
           <option value="cpp">C++</option>
         </select>
-        <select id="sizeSelect" class="lang-select" title="حجم المشروع">
-          <option value="small">صغير</option>
+        <select id="sizeSelect" class="lang-select">
+          <option value="small">مختصر</option>
           <option value="medium" selected>متوسط</option>
-          <option value="large">كبير ومفصّل</option>
+          <option value="large">كامل ومفصّل</option>
         </select>
       </div>
       <div class="input-row">
-        <textarea
-          id="userInput"
-          placeholder="اطلب أي مشروع أو كود… مثلاً: ابني موقع متجر إلكتروني كامل"
-          rows="1"
-        ></textarea>
-        <button class="send-btn" id="sendBtn" title="إرسال">
-          <span id="sendIcon">➤</span>
-        </button>
+        <textarea id="userInput" placeholder="اطلب أي مشروع أو كود…" rows="1"></textarea>
+        <button class="send-btn" id="sendBtn"><span id="sendIcon">➤</span></button>
       </div>
     </div>
-    <div class="input-hint">CodeForge AI · قد يخطئ الذكاء الاصطناعي، راجع الكود دائماً</div>
+    <div class="input-hint">CodeForge AI · claude-sonnet-4-6</div>
   </div>
-
 </main>
 ```
 
   </div>
 
-  <!-- ─── Code Block Template (hidden) ─── -->
+  <!-- Code Block Template -->
 
   <template id="codeBlockTpl">
     <div class="code-block">
@@ -158,21 +138,21 @@
         <span class="code-lang-badge"></span>
         <span class="code-filename"></span>
         <div class="code-actions">
-          <button class="code-btn copy-btn" title="نسخ">📋 نسخ</button>
-          <button class="code-btn dl-btn" title="تحميل">⬇ تحميل</button>
+          <button class="code-btn copy-btn">📋 نسخ</button>
+          <button class="code-btn dl-btn">⬇ تحميل</button>
         </div>
       </div>
       <pre><code></code></pre>
     </div>
   </template>
 
-  <!-- ─── ZIP Download Modal ─── -->
+  <!-- ZIP Modal -->
 
-  <div class="modal-overlay" id="zipModal" hidden>
+  <div class="modal-overlay" id="zipModal">
     <div class="modal">
       <div class="modal-icon">📦</div>
       <h3>تحميل المشروع كاملاً</h3>
-      <p id="zipModalDesc">سيتم تجميع جميع الملفات في ملف ZIP واحد</p>
+      <p id="zipModalDesc"></p>
       <div class="modal-files" id="zipFilesList"></div>
       <div class="modal-actions">
         <button class="btn-primary" id="zipDownloadBtn">⬇ تحميل ZIP</button>
@@ -180,8 +160,6 @@
       </div>
     </div>
   </div>
-
-  <!-- JSZip CDN -->
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
