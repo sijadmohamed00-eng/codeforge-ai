@@ -593,36 +593,56 @@ return String(str)
 ZIP MODAL
 ═══════════════════════════════════════════ */
 function openZipModal(files) {
+if (!files || !files.length) {
+alert(‘لا توجد ملفات للتحميل — أرسل طلباً أولاً وانتظر الرد.’);
+return;
+}
 state.pendingFiles = files;
-els.zipModalDesc.textContent = `${files.length} ملف/ملفات جاهزة للتحميل`;
-els.zipFilesList.innerHTML   = ‘’;
+els.zipModalDesc.textContent = `${files.length} ملف جاهز للتحميل`;
+els.zipFilesList.innerHTML = ‘’;
 
 files.forEach(f => {
 const item = document.createElement(‘div’);
 item.className = ‘modal-file-item’;
-item.innerHTML = `<span>📄</span> ${escapeHtml(f.filename)} <span style="color:var(--text3);margin-right:auto">${f.lang.toUpperCase()}</span>`;
+item.innerHTML = `<span>📄</span> ${escapeHtml(f.filename || 'file')} <span style="color:var(--text3);margin-right:auto">${(f.lang||'').toUpperCase()}</span>`;
 els.zipFilesList.appendChild(item);
 });
 
+els.zipModal.style.display = ‘flex’;
 els.zipModal.removeAttribute(‘hidden’);
+}
+
+function closeZipModal() {
+els.zipModal.style.display = ‘none’;
 }
 
 async function downloadZip() {
 const files = state.pendingFiles;
-if (!files.length) return;
-
+if (!files || !files.length) {
+alert(‘لا توجد ملفات للتحميل.’);
+return;
+}
+els.zipDownloadBtn.textContent = ‘⏳ جاري التجميع…’;
+els.zipDownloadBtn.disabled = true;
+try {
 const zip = new JSZip();
-files.forEach(f => zip.file(f.filename, f.code));
-
+files.forEach(f => zip.file(f.filename || `file.${f.lang||'txt'}`, f.code || ‘’));
 const blob = await zip.generateAsync({ type: ‘blob’ });
 const url  = URL.createObjectURL(blob);
 const a    = document.createElement(‘a’);
 a.href     = url;
 a.download = ‘codeforge-project.zip’;
+document.body.appendChild(a);
 a.click();
-URL.revokeObjectURL(url);
-
-els.zipModal.setAttribute(‘hidden’, ‘’);
+document.body.removeChild(a);
+setTimeout(() => URL.revokeObjectURL(url), 1000);
+closeZipModal();
+} catch (err) {
+alert(’فشل التحميل: ’ + err.message);
+} finally {
+els.zipDownloadBtn.textContent = ‘⬇ تحميل ZIP’;
+els.zipDownloadBtn.disabled = false;
+}
 }
 
 /* ═══════════════════════════════════════════
@@ -701,9 +721,9 @@ els.themeToggle.addEventListener(‘change’, e => applyTheme(e.target.checked)
 
 // ZIP modal
 els.zipDownloadBtn.addEventListener(‘click’, downloadZip);
-els.zipCancelBtn.addEventListener(‘click’, () => els.zipModal.setAttribute(‘hidden’,’’));
+els.zipCancelBtn.addEventListener(‘click’, closeZipModal);
 els.zipModal.addEventListener(‘click’, e => {
-if (e.target === els.zipModal) els.zipModal.setAttribute(‘hidden’,’’);
+if (e.target === els.zipModal) closeZipModal();
 });
 
 /* ═══════════════════════════════════════════
